@@ -21,10 +21,82 @@ reverse-engineering work on exactly this protocol:
 - [fujihack/fujihack](https://github.com/fujihack/fujihack) — firmware-level
   RE (PTP/USB debugger patch), less relevant to the wifi transport itself
   but confirms an active RE community around these cameras.
+- **[petabyt/fudge](https://github.com/petabyt/fudge)** — actively maintained
+  (155+ commits) open-source Android app explicitly pitched as "a basic
+  image gallery and image downloader" replacement for Fuji's own
+  Camera Connect/XApp. Beta builds on Google Play and F-Droid. Built on:
+- **[petabyt/libfuji](https://github.com/petabyt/libfuji)** — the C library
+  behind Fudge (WiFi/USB/BLE). Bare library only, no standalone CLI for
+  listing/downloading photos (its one bundled tool, `fp/`, is an unrelated
+  RAW-profile-format converter — don't confuse it with a transfer tool).
+  Would need a thin wrapper written against it to use from a PC directly.
+  `docs/dev.md` in this repo also links a detailed writeup:
+  https://danielc.dev/blog/fudge1/ (blocked by this environment's egress
+  policy, but readable normally — worth reading directly).
 
-Worth reading `malc0mn/ptp-ip`'s Fuji-specific source directly before
-extending our own client further — no need to re-derive what's already
-documented there.
+**fuji-cam-wifi-tool is a dead end for our actual goal** (transfer, not
+remote control) — confirmed it only implements shutter/ISO/aperture/white
+balance/live-view streaming, no object listing or download of any kind.
+
+**Exact handshake sequence**, pulled directly from
+`fudge-legacy-android/lib/fuji.c` (this is what our own `ptpip/client.py`
+is still missing beyond the bare INIT step):
+1. `ptpip_connect(ip, port, retries)` — TCP connect to command port (55740).
+2. `ptpip_fuji_init_req()` — Fuji-specific init packet (GUID + protocol
+   version), not a bare generic PTP/IP INIT_COMMAND_REQUEST.
+3. `ptp_open_session()`.
+4. **`fuji_wait_for_access()`** — polls `fuji_get_events()` /
+   `PTP_DPC_FUJI_EventsList` in a loop until camera state is no longer
+   `FUJI_WAIT_FOR_ACCESS`. **This is almost certainly what "please check the
+   app and select the function again" on the camera's screen corresponds
+   to** — a bare TCP+INIT+OpenSession handshake was never going to be
+   enough on its own.
+5. `fuji_config_init_mode()` then `fuji_config_version()` — a strict-order
+   property negotiation (reads/writes `GetObjectVersion`,
+   `RemoteGetObjectVersion`, `ImageGetVersion`, `RemoteVersion`,
+   `PTP_DPC_FUJI_ClientState`). Source comment: *"must be called before
+   fuji_config_version, or anything else. If not, it will break up the
+   connection."*
+6. Only after all that: standard PTP GetObjectHandles/GetObjectInfo/GetObject
+   should work. For remote-control features, separate sockets are opened on
+   the event (55741) and live-view (55742) ports.
+
+**A second, entirely different Fuji wifi protocol exists: PC AutoSave**
+(`docs/autosave.md` in libfuji). HTTP-based, not PTP/IP at all — ports
+51540/51541/51542, a DISCOVER/NOTIFY/REGISTER/IMPORT handshake. The camera
+*broadcasts* DISCOVER looking for a PC, which strongly implies the camera
+joins an **existing** network (like a home router) as a wifi client, rather
+than hosting its own AP — a completely different radio/firmware code path
+than the AP-mode association we've been fighting. If the X-T10 supports
+this mode, it could plausibly sidestep the whole association-crash bug
+entirely, since it's the camera's client-mode wifi stack, not its AP-mode
+stack. Unconfirmed whether the X-T10 supports it (documented against an
+X-H1) or whether its wifi menu even exposes a "join a network" option
+alongside "camera hosts its own network" — needs checking on the actual
+camera. Also: raw/RAF downloads via this mode were reportedly disabled at
+some point in Fuji's own history (JPEG may still work) — manage
+expectations if this pans out.
+
+**On whether Fudge/libfuji hit the same crash we found:** no direct
+confirmation either way. Checked issue trackers on both `fudge-legacy-android`
+and the current `fudge` repo (which shows 0 issues — restricted issue
+creation, likely using GitHub Discussions instead). Found:
+- [`fudge-legacy-android#14`](https://github.com/petabyt/fudge-legacy-android/issues/14):
+  Pixel 5, couldn't connect with LTE on, worked after disabling it — the
+  classic mobile-data-priority issue (same class as our very first
+  troubleshooting pass), not our association-crash bug.
+- [`fudge-legacy-android#35`](https://github.com/petabyt/fudge-legacy-android/issues/35):
+  X-A5 camera "shuts off completely," but *after* a successful wifi
+  association/DHCP/PTP-session-open, failing later during a specific
+  property query (`0xDF28`, invalid return code `200A`) — a different,
+  further-downstream bug than ours, no maintainer response.
+
+Neither confirms nor rules out our specific 802.11-association-layer bug
+happening in Fudge on a modern Pixel-class radio. Logically it likely would
+(every app has to route through the same underlying OS wifi-join mechanism
+we exhaustively tested across three trigger paths), but worth just trying —
+cheap, and Fudge is a smaller/newer project so absence of a report doesn't
+mean absence of the bug.
 
 ## Assumptions (superseded — see Confirmed below)
 
@@ -210,10 +282,14 @@ discovery/pairing step the camera expects before it opens 55740 at all.
 
 ## Open questions
 
-- Does the X-T10 support "infrastructure mode" (camera joins your home wifi)
-  or is it AP-only? Affects whether a laptop can join directly instead of
-  needing a capture step at all.
+- **Does the X-T10 support "infrastructure mode" / PC AutoSave (camera joins
+  your home wifi) or is it AP-only?** Now higher priority given the PC
+  AutoSave finding above — check the camera's own wireless communication
+  menu for an option to join a network (vs. only hosting its own). If
+  supported, this could route around the whole AP-mode association bug.
 - Is there a pairing/token exchange, or does the camera trust any client
   that's associated to its wifi?
 - Does RAW download go through the same PTP GetObject path as JPEG, or a
-  separate mechanism?
+  separate mechanism? (Also: PC AutoSave's RAF support reportedly
+  removed/limited at some point per libfuji's docs — check whether that
+  affects the X-T10 if PC AutoSave turns out to be viable.)
