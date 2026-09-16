@@ -25,10 +25,31 @@ before any wifi-layer encryption is even relevant.
 This captures the app's traffic before it hits the wifi radio, so no
 decryption step is needed regardless of what security the camera's AP uses.
 
+### Known limitation: Option A can't see a failed connection
+
+**PCAPdroid (and any Android VPN-based capture) only sees traffic on
+interfaces that already have a working IP and are an active route.** If the
+wifi join to the camera fails before DHCP completes — which is exactly
+what's happening with the X-T10 connection-failure bug — there is nothing
+for PCAPdroid to capture. You'll just get whatever background traffic was
+flowing over cellular/another wifi at the time, which looks like real data
+but is a dead end. Confirmed empirically: multiple Option A captures during
+a failed connection contained zero camera-related traffic, only unrelated
+app chatter (Play services, Spotify, WeChat, etc.) over the network that
+actually stayed connected the whole time.
+
+If the connection is currently **failing** rather than working, Option A is
+the wrong tool — go straight to `adb logcat` (see
+`notes/TROUBLESHOOTING.md`) or Option B below, since both operate at or
+below the layer where the failure happens. Option A is still the right
+choice once you have a *working* connection and want to capture the actual
+transfer protocol.
+
 ## Option B: monitor-mode capture (fallback, needs extra hardware)
 
-Only do this if Option A doesn't work for some reason (e.g. the app detects
-and blocks the VPN service).
+Do this if the connection is failing before an IP is even assigned (Option
+A can't see this — see above), or if Option A doesn't work for some other
+reason (e.g. the app detects and blocks the VPN service).
 
 1. You need a wifi adapter capable of monitor mode on a laptop (built-in
    Intel/Broadcom cards on Linux often work; a small USB adapter like an

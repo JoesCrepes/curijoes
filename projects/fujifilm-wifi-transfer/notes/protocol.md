@@ -47,6 +47,27 @@ PTP/IP packet types (as used by libgphoto2/libptp2), not Fuji-specific:
 | 13    | PROBE_REQUEST (ping)     |
 | 14    | PROBE_RESPONSE (pong)    |
 
+## Connection-failure investigation log
+
+- SSID confirmed: `FUJIFILM-X-T10-1EB1`.
+- Joining that SSID directly from Android's system wifi settings (bypassing
+  the app entirely) produces a connection error on the phone **and hard
+  crashes the camera** (requires battery pull to recover).
+- Critically: **failing to connect via the Fujifilm app does not crash the
+  camera.** Only the direct OS-level join does. This means the app is doing
+  something different from a plain wifi association/DHCP negotiation —
+  either avoiding a step that trips up the camera's embedded network stack,
+  or handling the failure more gracefully on its own end. This is the
+  strongest lead so far on the actual bug and worth chasing before anything
+  else (via `adb logcat` on wifi/DHCP tags during a manual join attempt, and
+  by testing whether a laptop joining the same SSID also crashes the camera
+  — see `notes/TROUBLESHOOTING.md`).
+- Confirmed empirically that PCAPdroid (VPN-based capture) cannot see any of
+  this: three separate captures during failed connection attempts contained
+  zero camera-related traffic, because the wifi join never got far enough to
+  get an IP/become an active route for the VPN tunnel to ride on. See the
+  "known limitation" note in `capture/CAPTURE_GUIDE.md`.
+
 ## Open questions
 
 - Does the X-T10 support "infrastructure mode" (camera joins your home wifi)
