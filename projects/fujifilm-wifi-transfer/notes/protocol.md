@@ -119,16 +119,37 @@ PCAPdroid scoping or adb filtering):
 - Wifi handoff happens via `com.fujifilm_dsc.app.remoteshooter.WiFiHandOverService`
   / `CommonWiFiHandOverVM`.
 
-**Next test to run:** a request for the *exact* SSID (`FUJIFILM-X-T10-1EB1`)
-via `WifiNetworkSpecifier` instead of a prefix pattern might take a
-different, non-buggy path through `WifiNetworkFactory` (the log explicitly
-distinguishes single-network requests from pattern requests) and might
-actually reach the association stage — which would let us observe for the
-first time whether the camera's AP survives an association negotiated via
-this API at all, independent of Bug 1. Requires a minimal custom Android
-app since this isn't reachable via `adb shell cmd wifi` (that command uses
-a different, system-privileged connect path — confirmed, since it hit Bug 1
-directly rather than going through `WifiNetworkFactory`).
+**Exact-SSID test result (via `android-wifi-test/`): confirmed and closed.**
+An exact-SSID `WifiNetworkSpecifier` (`PatternMatcher{LITERAL: ...}` instead
+of `PREFIX`) does skip Bug 2 entirely — no dialog, straight to
+`WifiNetworkFactory: User initiated connect to network`. But it then hits
+Bug 1 on every one of Android's 4 automatic retry attempts:
+```
+WifiClientModeImpl: L2ConnectingState: Association rejection ssid:
+"FUJIFILM-X-T10-1EB1" bssid: 00:c0:2d:b7:a0:c0 statusCode: 1
+```
+(x4 over ~9s, then `WifiNetworkFactory: Connection failures, cancelling` /
+`onUnavailable`.) Same BSSID, same status code, same camera crash as the
+direct OS-level join. **Conclusion: this is a hard, camera-firmware-level
+wall.** The camera's embedded wifi stack cannot complete an 802.11
+association with this phone's radio regardless of which Android API
+triggers the join — it is not an app bug or an Android specifier-matching
+bug (that one, Bug 2, is real but separate and now confirmed bypassable).
+No client-side software trick observed so far routes around it.
+
+**Remaining options, roughly in order of practicality:**
+1. Accept Fujifilm's own documented fallback for unsupported cameras: USB
+   cable transfer, or pull the SD card with a reader. Boring but guaranteed.
+2. Try pairing with a phone from roughly the X-T10's own era (~2015-2018).
+   Untested theory: an older device's association request frame is simpler
+   and might not trigger whatever the camera's fragile 802.11 parser chokes
+   on. Cheap to try if an old phone is available.
+3. Monitor-mode capture of the actual association request frame bytes
+   (see `capture/CAPTURE_GUIDE.md` Option B) to identify the exact
+   information element triggering the rejection. Now a much more targeted
+   capture than earlier attempts (we know precisely when it happens), but
+   this only satisfies curiosity at this point — even knowing the exact IE,
+   there's no way to patch the camera's firmware to tolerate it.
 
 ## Open questions
 
