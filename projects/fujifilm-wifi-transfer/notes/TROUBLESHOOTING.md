@@ -1,5 +1,41 @@
 # "Can't connect at all" — before blaming the protocol
 
+## Known issue: Fujifilm's documented Camera Remote connection failure
+
+Fujifilm has publicly acknowledged a connection-failure bug affecting
+recent iOS (18+) and recent Android phones (Pixel 9 series confirmed,
+likely later Pixels too — same OS-level wifi stack), where the camera can
+outright freeze on connection attempts:
+https://www.fujifilm-x.com/global/news/countermeasure-for-fujifilm-camera-remote-connection-failure/
+
+- Firmware fixes were issued for GFX 50S, X-Pro2, X-T2, X-T20, X-E3, and
+  X100F.
+- **The X-T10 will not get a firmware fix** (hardware limitation per
+  Fujifilm). Their official fallback for unsupported cameras is USB-cable
+  transfer or pulling the SD card with a reader.
+- Leading community theory (unconfirmed by Fujifilm's technical detail, but
+  consistent with the symptom): newer OS per-network MAC randomization
+  sends an inconsistent MAC during the camera's DHCP handshake, and the
+  camera's minimal embedded DHCP server doesn't handle that gracefully and
+  locks up.
+
+**Try this first, in order, before anything protocol-level:**
+1. Disable MAC randomization for the camera's saved wifi network (per-SSID
+   setting: use device MAC instead of randomized). This directly targets
+   the suspected cause.
+2. Power-cycle the camera if it froze on a previous attempt, then forget +
+   re-add the network on the phone before retrying.
+3. If still broken: use Fujifilm's own documented workaround — USB cable
+   transfer, or an SD card reader. Not elegant, but guaranteed.
+
+This is also a useful test for this project: if the bug is really in the
+*phone's* DHCP behavior, a laptop should be able to associate and talk
+PTP/IP cleanly via `diagnose.py` even when the Pixel app can't. Worth
+checking before investing in a full packet capture — if a laptop works
+fine, it both confirms the theory and validates that a custom client run
+from something other than an affected phone sidesteps the bug entirely.
+
+
 If this used to work and now doesn't, the most likely culprit is Android
 itself getting more aggressive about wifi-with-no-internet over the years,
 not anything wrong with the camera or a protocol change. Camera APs have no
