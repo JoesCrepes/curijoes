@@ -27,7 +27,10 @@ import sys
 from ptpip.client import DEFAULT_PORT, probe
 
 COMMON_PORTS = {
-    15740: "PTP/IP (standard camera transfer protocol)",
+    55740: "Fuji PTP/IP command/data (confirmed via malc0mn/ptp-ip)",
+    55741: "Fuji PTP/IP event connection",
+    55742: "Fuji PTP/IP streamer/live view connection",
+    15740: "PTP/IP (generic default - Fuji doesn't use this)",
     80: "HTTP (possible config/status page)",
     8080: "HTTP alt",
     5353: "mDNS (possible discovery)",
@@ -76,7 +79,7 @@ def main() -> None:
         probe(host, DEFAULT_PORT)
     else:
         print(
-            f"Port {DEFAULT_PORT} (standard PTP/IP) is not open, but other "
+            f"Port {DEFAULT_PORT} (Fuji PTP/IP command/data) is not open, but other "
             "ports are. This camera/mode may use a different protocol or "
             "port than assumed - worth checking whatever port IS open "
             "manually (e.g. `curl http://<ip>` if 80 is open)."

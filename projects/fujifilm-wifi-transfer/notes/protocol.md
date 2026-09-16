@@ -3,27 +3,63 @@
 Keep confirmed observations and assumptions clearly separated. Update this
 after every capture.
 
-## Assumptions (unverified)
+## Prior art found (this saved us from re-deriving all of this blind)
 
-- Transport is PTP/IP (ISO 15740 Annex D), TCP port 15740, same as
-  libgphoto2's `ptpip` camlib uses for tethered Fuji/Canon/Nikon bodies over
-  wifi.
+Once we confirmed a wifi association could actually succeed (see the
+Windows laptop breakthrough below), a search turned up existing
+reverse-engineering work on exactly this protocol:
+
+- [malc0mn/ptp-ip](https://github.com/malc0mn/ptp-ip) — Go implementation of
+  PTP/IP with a **working Fuji X-T1 implementation**. This is the most
+  useful source found: confirms Fuji's actual port numbers and vendor
+  opcodes (see Confirmed section below).
+- [grw1983/fuji-cam-wifi-tool](https://github.com/grw1983/fuji-cam-wifi-tool)
+  and forks (hkr, mzealey) — reverse-engineered wifi remote control for Fuji
+  X-series (shutter, ISO, aperture, white balance, streaming).
+- [petabyt/fudge-legacy-android](https://github.com/petabyt/fudge-legacy-android)
+  — has `lib/fuji.c`, another independent implementation.
+- [fujihack/fujihack](https://github.com/fujihack/fujihack) — firmware-level
+  RE (PTP/USB debugger patch), less relevant to the wifi transport itself
+  but confirms an active RE community around these cameras.
+
+Worth reading `malc0mn/ptp-ip`'s Fuji-specific source directly before
+extending our own client further — no need to re-derive what's already
+documented there.
+
+## Assumptions (superseded — see Confirmed below)
+
+- ~~Transport is PTP/IP (ISO 15740 Annex D), TCP port 15740~~ — **wrong**,
+  see Confirmed.
 - Discovery (the app "finding" the camera before opening the PTP/IP session)
   is a custom step on top of / before PTP/IP, since standard PTP/IP assumes
-  you already know the host to connect to.
+  you already know the host to connect to. Still unconfirmed — camera showed
+  "please check the app and select the function again" even after a clean
+  wifi association, meaning some app-level step still needs to happen before
+  the camera opens any service.
 - File listing and download use standard PTP operations (GetObjectHandles,
   GetObjectInfo, GetObject, GetThumb) with Fuji vendor-specific op codes
-  layered in for anything RAW/proprietary.
+  layered in for anything RAW/proprietary. Still unconfirmed.
 
-## Confirmed (fill in from capture)
+## Confirmed
 
-- Camera AP SSID / security type:
-- Phone's IP once associated:
-- Camera's IP once associated:
-- Discovery mechanism observed:
-- Port(s) actually used:
-- PTP/IP container types observed (INIT_COMMAND_REQUEST, OpenSession, etc.):
-- Any vendor-specific opcodes observed:
+- Camera AP SSID: `FUJIFILM-X-T10-1EB1`, open/no-password.
+- Camera's IP once associated: `192.168.0.1` (also acts as DHCP server and
+  default gateway).
+- **Port(s): Fuji does NOT use standard PTP/IP's 15740.** Per malc0mn/ptp-ip:
+  - `55740` — command/data connection (this is what our INIT handshake
+    targets)
+  - `55741` — event connection
+  - `55742` — streamer/live view connection
+  - Our first `diagnose.py` run scanned only 15740 and got nothing — that
+    was scanning the wrong port entirely, not a sign the camera wasn't
+    listening. `ptpip/client.py` and `diagnose.py` are now updated to use
+    55740 by default.
+- Vendor-specific opcodes (from malc0mn/ptp-ip): `0x902B` (Fuji-specific
+  operation), `0xD212` (Fuji-specific property). Not yet exercised against
+  our own camera.
+- Init handshake still uses standard PTP/IP framing: GUID + friendly name,
+  which is what `ptpip/client.py`'s `INIT_COMMAND_REQUEST` already builds.
+- Discovery mechanism observed: still open — see below.
 
 ## Reference: standard PTP/IP container types
 
@@ -137,19 +173,40 @@ triggers the join — it is not an app bug or an Android specifier-matching
 bug (that one, Bug 2, is real but separate and now confirmed bypassable).
 No client-side software trick observed so far routes around it.
 
-**Remaining options, roughly in order of practicality:**
-1. Accept Fujifilm's own documented fallback for unsupported cameras: USB
-   cable transfer, or pull the SD card with a reader. Boring but guaranteed.
-2. Try pairing with a phone from roughly the X-T10's own era (~2015-2018).
-   Untested theory: an older device's association request frame is simpler
-   and might not trigger whatever the camera's fragile 802.11 parser chokes
-   on. Cheap to try if an old phone is available.
-3. Monitor-mode capture of the actual association request frame bytes
-   (see `capture/CAPTURE_GUIDE.md` Option B) to identify the exact
-   information element triggering the rejection. Now a much more targeted
-   capture than earlier attempts (we know precisely when it happens), but
-   this only satisfies curiosity at this point — even knowing the exact IE,
-   there's no way to patch the camera's firmware to tolerate it.
+**Breakthrough: a Windows laptop (Intel Dual Band Wireless-AC 8275 — no
+802.11ax/Wifi6+, i.e. an older/simpler radio and driver stack than the
+Pixel) joined `FUJIFILM-X-T10-1EB1` cleanly, no crash.** This confirms the
+theory from the "remaining options" list below: the camera's 802.11
+association crash is specific to what the *client's* radio/driver sends,
+not universal. Got a valid DHCP lease (`192.168.33.2`, gateway/DHCP server
+`192.168.0.1`), camera did not lock up.
+
+However: the camera's own screen showed "please check the app and select
+the function again" — a plain wifi association is not sufficient on its own.
+A first `diagnose.py 192.168.0.1` scan (of port 15740 only, before we found
+the port info above) came back with everything closed — **expected now
+that we know Fuji uses 55740, not 15740.** Next step is re-running
+`diagnose.py`/`ptpip/client.py` against the correct port, and separately
+figuring out what "select the function again" is asking for — likely some
+discovery/pairing step the camera expects before it opens 55740 at all.
+
+**Next steps, in order:**
+1. Re-run `python diagnose.py 192.168.0.1` now that it checks 55740 first —
+   see whether the port is actually open once associated.
+2. If 55740 is open, try the INIT handshake (`ptpip/client.py`) directly —
+   our GUID+friendly-name framing already matches what malc0mn/ptp-ip uses.
+3. If closed, the camera really is gating it behind selecting a mode/function
+   on its own screen (per the "select the function again" message) — read
+   through malc0mn/ptp-ip's and fuji-cam-wifi-tool's source for what they do
+   differently before a session opens (a specific UDP probe, a particular
+   camera-menu precondition, etc.) rather than re-deriving it via capture.
+
+**Deprioritized (only revisit if the above stalls):**
+- USB cable / SD card transfer — Fujifilm's own documented fallback, still
+  the fastest guaranteed path for actually getting photos off today.
+- Monitor-mode capture of the association frame — no longer needed for
+  *this* radio (it doesn't crash), but could still help if 55740 stays
+  closed and prior-art source reading doesn't explain why.
 
 ## Open questions
 

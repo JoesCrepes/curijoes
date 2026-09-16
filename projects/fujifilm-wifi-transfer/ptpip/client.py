@@ -24,7 +24,13 @@ import uuid
 
 from .container import Container, PacketType, split_containers, type_name
 
-DEFAULT_PORT = 15740
+# Fuji deviates from the generic PTP/IP default (15740): confirmed via
+# malc0mn/ptp-ip (github.com/malc0mn/ptp-ip), which has a working Fuji X-T1
+# implementation using three separate ports:
+#   55740 - command/data (this is the one we want for INIT_COMMAND_REQUEST)
+#   55741 - event
+#   55742 - streamer/live view
+DEFAULT_PORT = 55740
 GUID = uuid.uuid4().bytes  # random per run; real clients likely persist this
 FRIENDLY_NAME = "curijoes-ptpip-probe"
 
