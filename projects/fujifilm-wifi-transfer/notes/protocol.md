@@ -68,6 +68,68 @@ PTP/IP packet types (as used by libgphoto2/libptp2), not Fuji-specific:
   get an IP/become an active route for the VPN tunnel to ride on. See the
   "known limitation" note in `capture/CAPTURE_GUIDE.md`.
 
+### adb logcat findings: two independent, stacked bugs
+
+**Bug 1 — camera-side, confirmed via direct OS-level join (`adb shell cmd
+wifi connect-network "FUJIFILM-X-T10-1EB1" open`, and via Settings UI).**
+Every attempt fails identically:
+```
+WifiClientModeImpl: L2ConnectingState: Association rejection ssid:
+"FUJIFILM-X-T10-1EB1" bssid: 00:c0:2d:b7:a0:c0 statusCode: 1 timedOut: true
+```
+Status code 1 = 802.11 "unspecified failure", rejected at the **association**
+step — before authentication, before DHCP, before anything protocol-level.
+This happens on every attempt, with a real BSSID from the first try onward,
+so it's a real, consistent AP-side rejection, not a fluke. Best-supported
+theory: the X-T10's decade-old embedded wifi stack can't parse the richer
+association request frames modern phones send (HE/VHT capability elements,
+extended capabilities bits, etc.) and either rejects outright or corrupts
+state badly enough to hard-crash (matches Fujifilm's own countermeasure,
+which patched *supported* cameras' network stacks for exactly this; the
+X-T10 doesn't get it due to hardware limits). The `adb shell cmd wifi
+connect-network` debug command goes through this same system-level connect
+path (same crash) — it is not a usable workaround.
+
+**Bug 2 — Android-side, confirmed via logcat capture of the app's own
+attempt.** The app uses `ConnectivityManager.requestNetwork()` with a
+`WifiNetworkSpecifier` using a **prefix pattern** match (`PatternMatcher{
+PREFIX: FUJIFILM-}`), not a plain wifi join and not an exact-SSID specifier.
+This is why app-initiated failures never crash the camera: the request dies
+inside Android's own plumbing before any frame is ever sent to the camera.
+Sequence observed:
+```
+WifiNetworkFactory: got request NetworkRequest [ ... Specifier: <WifiNetworkSpecifier [, SSID Match pattern=PatternMatcher{PREFIX: FUJIFILM-}, ...] Uid: 10511 RequestorPkg: com.fujifilm_dsc.app.remoteshooter ]
+WifiNetworkFactory: ActiveRequest not for single access point or network.
+[NetworkRequestDialogActivity launches]
+WifiNetworkFactory: No callback registered for sending network request matches. Ignoring...
+[~1s later, dialog finishes on its own]
+WifiNetworkFactory: User dismissed notification, cancelling NetworkRequest [...]
+```
+No `WifiClientModeImpl`/`wpa_supplicant` activity follows — no association
+is ever attempted. This looks like a genuine Android regression/race in
+`WifiNetworkFactory`'s handling of *pattern-based* specifier requests
+specifically (the log explicitly branches on "not for single access point
+or network"), separate from Bug 1.
+
+**App package/component names learned along the way** (useful for future
+PCAPdroid scoping or adb filtering):
+- App package: `com.fujifilm_dsc.app.remoteshooter` (not `com.fujifilm.xapp`
+  — that's a different, unrelated Fujifilm app also installed on this
+  phone).
+- Wifi handoff happens via `com.fujifilm_dsc.app.remoteshooter.WiFiHandOverService`
+  / `CommonWiFiHandOverVM`.
+
+**Next test to run:** a request for the *exact* SSID (`FUJIFILM-X-T10-1EB1`)
+via `WifiNetworkSpecifier` instead of a prefix pattern might take a
+different, non-buggy path through `WifiNetworkFactory` (the log explicitly
+distinguishes single-network requests from pattern requests) and might
+actually reach the association stage — which would let us observe for the
+first time whether the camera's AP survives an association negotiated via
+this API at all, independent of Bug 1. Requires a minimal custom Android
+app since this isn't reachable via `adb shell cmd wifi` (that command uses
+a different, system-privileged connect path — confirmed, since it hit Bug 1
+directly rather than going through `WifiNetworkFactory`).
+
 ## Open questions
 
 - Does the X-T10 support "infrastructure mode" (camera joins your home wifi)
