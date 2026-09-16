@@ -23,8 +23,21 @@ against once we're back near the camera:
 - [ ] Map any Fuji vendor-specific PTP op codes for RAW pull / thumbnails.
 - [ ] Working minimal client: enumerate + download objects.
 
+## Can't even get the app to connect?
+
+Start with `notes/TROUBLESHOOTING.md` before assuming it's a protocol
+problem — a no-internet AP getting dropped by Android's network switching is
+by far the most common cause of "this used to work and now doesn't."
+`diagnose.py` checks camera reachability and PTP/IP directly from a laptop,
+no packet capture required.
+
 ## Layout
 
+- `notes/TROUBLESHOOTING.md` — checklist for "app won't connect at all"
+  before digging into protocol-level stuff.
+- `diagnose.py` — network-layer connectivity/PTP-IP check against the
+  camera's IP, runnable from a laptop on the camera's wifi, no capture
+  needed.
 - `capture/CAPTURE_GUIDE.md` — how to record a pcap of the app talking to the
   camera, written for a hotel-room setup (no special wifi hardware assumed).
 - `notes/protocol.md` — living notes on what we actually observe, kept
