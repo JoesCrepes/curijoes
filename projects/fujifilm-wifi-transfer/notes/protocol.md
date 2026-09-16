@@ -280,6 +280,81 @@ discovery/pairing step the camera expects before it opens 55740 at all.
   *this* radio (it doesn't crash), but could still help if 55740 stays
   closed and prior-art source reading doesn't explain why.
 
+## Read the actual libfuji/fudge source (not paraphrases) — major findings
+
+Cloned `petabyt/libfuji`, `petabyt/fudge`, and `petabyt/libpak` locally and
+read the real files, since AI-summarized fetches of GitHub pages were
+dropping/garbling exact struct layouts and function signatures. This
+resolved several open questions at once:
+
+**1. Fuji's INIT_COMMAND_REQUEST payload is NOT generic PTP/IP framing.**
+Verified byte-for-byte from `lib/fujiptp.h`:
+```c
+#define FUJI_PROTOCOL_VERSION 0x8f53e4f2
+struct __attribute__((packed)) FujiInitPacket {
+    uint32_t length; uint32_t type; uint32_t version;
+    uint32_t guid1; uint32_t guid2; uint32_t guid3; uint32_t guid4;
+    char device_name[54]; // fixed-size, not variable-length null-terminated
+};
+_Static_assert(sizeof(struct FujiInitPacket) == 82, "fail");
+```
+`length`+`type` are the standard PTP/IP container header (still handled by
+our `Container` class); the payload after that is `version` (a magic
+constant, not a real version) + GUID as 4 raw uint32s + a **fixed 54-byte**
+name field, not the variable-length UTF-16-null-terminated name generic
+PTP/IP uses. `ptpip/client.py` now builds this exact layout and its output
+was verified to produce exactly 82 bytes total, matching the C
+`_Static_assert`.
+
+**2. "Please check the app and select the function again" is very likely
+about the camera's own menu, not a missing network step.** `fujiptp.h`'s
+`enum FujiTransport` ties `FUJI_FEATURE_WIRELESS_COMM` directly to the
+camera's own menu items: *"'WIRELESS COMMUNICATION' or 'WIRELESS
+TRANSFER'"*. Port 55740 belongs specifically to this mode. Two OTHER modes
+- `FUJI_FEATURE_AUTOSAVE` ('PLAYBACK MENU' -> 'PC AUTO SAVE') and
+`FUJI_FEATURE_WIRELESS_TETHER` - have their own separate discovery protocol
+(`lib/discovery.c`: UDP/TCP on ports 51540-51542/51560/51562, a
+DISCOVER/NOTIFY/REGISTER/IMPORT dance) that does NOT apply to Wireless
+Communication mode at all. For Wireless Communication mode specifically,
+`libfuji`'s own test code (`lib/cli.c`'s `fudge_test_camera`) just does a
+plain `ptpip_connect()` straight to the known IP/port - no discovery
+broadcast. This strongly suggests: no missing network-level discovery step,
+just the camera's own screen needing "WIRELESS COMMUNICATION"/"WIRELESS
+TRANSFER" actively selected as the current function before it opens 55740.
+**Check this specifically next time at the camera** - is there a distinct
+menu option by this name, and was it actually selected (not just "camera
+turned on with wifi enabled generally") during our port-scan attempts?
+
+**3. Confirmed the answer to "does Fudge avoid our Android bug": no.** Read
+`libpak/android/src/main/java/dev/danielc/libpak/WiFi.java` (the actual
+wifi-connection code backing the Fudge app) directly. `connectToAccessPoint()`
+uses `ConnectivityManager.requestNetwork()` with a `WifiNetworkSpecifier` -
+the identical API/mechanism we exhaustively tested ourselves. For a normal
+(non-hidden) SSID it builds `setSsidPattern(new PatternMatcher(ssid,
+PATTERN_ADVANCED_GLOB))` - a pattern match, the same category of specifier
+that triggered the `WifiNetworkFactory` "no callback registered" bug in
+Fuji's own official app. There's a fancier `connectToAccessPointCompanion()`
+path using `CompanionDeviceManager` for a nicer picker UI (this is the "new
+companion APIs" mentioned in Fudge's README) and which can pin to a
+specific BSSID once previously paired - but it still funnels into the same
+underlying `connectToAccessPoint()` → `requestNetwork()` call. A saved
+BSSID might dodge Bug 2 (the pattern-matching plumbing bug), but Bug 1 (the
+camera's own association-layer crash) lives one level deeper in Android's
+wifi stack and nothing here touches that layer differently. **Fudge on the
+Pixel would almost certainly hit the identical crash we already found**,
+just via a nicer dialog on the way there.
+
+**4. Full post-INIT handshake sequence** (from
+`fudge-legacy-android/lib/fuji.c`, for whenever INIT is confirmed working):
+`ptp_open_session()` → poll `fuji_get_events()` /
+`PTP_DPC_FUJI_CameraState_DF00` in a loop until it's no longer
+`FUJI_WAIT_FOR_ACCESS` (0) → strict-order property negotiation
+(`fuji_config_init_mode()` then `fuji_config_version()`, reading/writing
+`PTP_DPC_FUJI_GetObjectVersion_DF22`, `RemoteGetObjectVersion_DF25`,
+`ImageGetVersion_DF21`, `RemoteVersion_DF24`, `ClientState_DF01`) → only
+then do `ptp_fuji_get_object_handles()`/`fuji_download_file()` work. Not
+yet implemented in our own client.py - next step once INIT is confirmed.
+
 ## Open questions
 
 - **Does the X-T10 support "infrastructure mode" / PC AutoSave (camera joins
