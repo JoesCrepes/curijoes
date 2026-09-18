@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout
+        android:orientation="vertical" android:padding="16dp"
+        android:layout_width="match_parent" android:layout_height="wrap_content">
+
+        <TextView android:text="Server" android:textStyle="bold"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        <EditText android:id="@+id/serverUrl" android:hint="https://your-app.vercel.app" android:inputType="textUri"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <EditText android:id="@+id/token" android:hint="API token" android:inputType="textPassword"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <EditText android:id="@+id/deviceName" android:hint="Device name" android:inputType="text"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+
+        <TextView android:text="Capture" android:textStyle="bold" android:layout_marginTop="16dp"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        <EditText android:id="@+id/allowedApps" android:hint="Allowed packages, comma separated" android:inputType="text"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <CheckBox android:id="@+id/captureAll" android:text="Capture every media app (discovery mode; the server still filters)"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+
+        <Button android:id="@+id/save" android:text="Save"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+
+        <TextView android:text="Permissions" android:textStyle="bold" android:layout_marginTop="16dp"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        <Button android:id="@+id/grantListener" android:text="Grant notification access"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <Button android:id="@+id/grantNotif" android:text="Allow notifications"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+
+        <TextView android:text="Actions" android:textStyle="bold" android:layout_marginTop="16dp"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        <LinearLayout android:orientation="horizontal"
+            android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Button android:id="@+id/uploadNow" android:text="Upload now" android:layout_weight="1"
+                android:layout_width="0dp" android:layout_height="wrap_content"/>
+            <Button android:id="@+id/checkActions" android:text="Check prompts" android:layout_weight="1"
+                android:layout_width="0dp" android:layout_height="wrap_content"/>
+        </LinearLayout>
+
+        <TextView android:text="Status" android:textStyle="bold" android:layout_marginTop="16dp"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        <TextView android:id="@+id/status" android:typeface="monospace" android:textSize="12sp"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    </LinearLayout>
+</ScrollView>
