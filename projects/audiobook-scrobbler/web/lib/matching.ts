@@ -12,6 +12,7 @@ export interface BookRow {
   match_status: string;
   external_id?: string | null;
   external_id_kind?: string | null;
+  source_app?: string | null;
   /** Total runtime the player itself reported, when it reports one (Libby). */
   observed_runtime_seconds?: number | null;
 }
@@ -236,7 +237,15 @@ export async function matchBook(book: BookRow, settings: Settings): Promise<void
       user_id: book.user_id,
       type: 'match_book',
       book_id: book.id,
-      payload: { title: book.title, author: book.author, candidates: cands.slice(0, 3) },
+      payload: {
+        title: book.title,
+        author: book.author,
+        // What the player said the book runs to, so the prompt can mark which
+        // candidate's length actually agrees instead of only showing a score.
+        observed_runtime_seconds: book.observed_runtime_seconds ?? null,
+        source_app: book.source_app ?? null,
+        candidates: cands.slice(0, 3),
+      },
     });
   }
 }

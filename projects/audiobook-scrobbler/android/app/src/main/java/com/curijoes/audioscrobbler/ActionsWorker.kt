@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -69,9 +68,12 @@ class ActionsWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val id = a.getString("id")
         val payload = a.optJSONObject("payload") ?: JSONObject()
         val title = payload.optString("title", "a book")
+        // Open this prompt in the app, not the web page.
         val open = PendingIntent.getActivity(
             ctx, Notifications.idFor(id),
-            Intent(Intent.ACTION_VIEW, Uri.parse(Prefs(ctx).serverUrl + "/")),
+            Intent(ctx, MainActivity::class.java)
+                .putExtra(EXTRA_ACTION_ID, id)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val b = Notification.Builder(ctx, Notifications.CHANNEL_PROMPTS)

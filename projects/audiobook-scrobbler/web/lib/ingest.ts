@@ -286,6 +286,7 @@ export async function recomputeRead(readId: string, settings: Settings): Promise
   const update: Record<string, unknown> = {
     last_activity_at: last.occurred_at,
     chapter_idx: lastPos?.chapter_idx ?? null,
+    chapter_count: chapterCount,
     chapter_position_ms: lastPos?.position_ms ?? null,
     book_position_ms: progress.book_position_ms,
     book_seconds_listened: cumulative,
