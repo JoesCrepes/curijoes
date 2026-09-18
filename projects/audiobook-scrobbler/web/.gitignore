@@ -4,3 +4,6 @@ next-env.d.ts
 .env.local
 *.tsbuildinfo
 .replay/
+
+.vercel
+.env*
