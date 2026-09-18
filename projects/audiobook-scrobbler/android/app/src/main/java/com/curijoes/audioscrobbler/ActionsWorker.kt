@@ -29,8 +29,22 @@ class ActionsWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val prefs = Prefs(applicationContext)
         if (!prefs.configured) return Result.failure()
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val api = Api(prefs)
+
+        // Ask the server to re-evaluate before we read the queue. The endpoint
+        // takes our own bearer token, so this needs no extra secret, and it is
+        // idempotent. Doing it from here rather than on a schedule means
+        // prompts appear within the poll interval instead of once a day, which
+        // is all a Vercel Hobby account will schedule. The server-side daily
+        // run stays as a backstop for when this phone is off for a while.
+        try {
+            api.get("/api/cron/evaluate")
+        } catch (e: Exception) {
+            ServiceState.lastError = "evaluate: ${e.message}"
+        }
+
         return try {
-            val res = Api(prefs).get("/api/actions")
+            val res = api.get("/api/actions")
             val actions = res.optJSONArray("actions") ?: return Result.success()
             val pendingIds = HashSet<String>()
             for (i in 0 until actions.length()) {
