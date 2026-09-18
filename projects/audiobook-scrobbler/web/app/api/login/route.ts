@@ -9,6 +9,6 @@ export async function POST(req: Request) {
   const probe = new Request(req.url, { headers: { authorization: `Bearer ${token}` } });
   if (!authenticate(probe)) return NextResponse.json({ error: 'bad token' }, { status: 401 });
   const res = NextResponse.json({ ok: true });
-  res.cookies.set('api_token', token, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 365 });
+  res.cookies.set('api_token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 365 });
   return res;
 }

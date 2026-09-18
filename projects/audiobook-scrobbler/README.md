@@ -74,3 +74,19 @@ All routes take `Authorization: Bearer <API_TOKEN>` (the PWA uses a cookie set b
 | `GET /api/cron/evaluate` | stall prompts, timeouts, Hardcover retry (hourly) |
 | `GET /api/hardcover/probe` | verifies Hardcover schema assumptions |
 | `POST /api/admin/reprocess` | `{mode: reprocess|recompute}` |
+
+## Android app notes
+
+- `MediaListenerService` is a `NotificationListenerService` only because that
+  is the permission Android requires for `MediaSessionManager.getActiveSessions`.
+  It never reads notifications.
+- Events: `metadata` (book/chapter changed), `queue` (chapter list), `play`,
+  `pause`, `stop`, and a `position` sample every 60 s while playing. Every
+  event carries the whole `MediaMetadata` bag in `raw`.
+- Outbox is SQLite (`events.db`); `UploadWorker` drains it whenever there's
+  network, `ActionsWorker` polls for prompts every 15 min and after uploads.
+- *Capture every media app* is a discovery mode: use it once to learn a
+  player's package name from the status panel, then put that name in the
+  allow-list here and in the server's `allowed_apps` setting.
+- Build: `./gradlew assembleDebug` with the Android SDK installed, or take the
+  APK artifact from the GitHub Actions run.
