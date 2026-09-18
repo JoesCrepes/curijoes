@@ -38,26 +38,41 @@ cp .env.local.example .env.local   # fill in
 npm run dev
 ```
 
-1. Create a Supabase project and run `web/supabase/migrations/0001_init.sql`
-   in the SQL editor.
-2. Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `API_TOKEN`
-   (`openssl rand -hex 32`), `CRON_SECRET`, and optionally `HARDCOVER_TOKEN`.
-3. Deploy to Vercel with the project root set to
-   `projects/audiobook-scrobbler/web`. `vercel.json` schedules the hourly
-   stall/timeout/resync cron.
-4. Open the site, sign in with `API_TOKEN`, then Settings → *Probe Hardcover*.
-   Once the probe reports the mutations exist, set `HARDCOVER_DRY_RUN=false`.
+1. Create a Supabase project and run every file in
+   `web/supabase/migrations/` in order. `0003` turns on row level security
+   with no policies, which is what stops the public anon key reading your
+   listening log; the server's secret key bypasses it.
+2. Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (the `sb_secret_…` key, which
+   replaced the legacy `service_role` key), `API_TOKEN` (`openssl rand -hex
+   32`), `CRON_SECRET`, and optionally `HARDCOVER_TOKEN`.
+3. `npm run check` verifies the lot: database reads and writes, that RLS
+   really does block the publishable key, and that the Hardcover token works.
+   It prints no secrets.
+4. `bash scripts/deploy.sh <vercel-project>` links the project, pushes those
+   variables to production and preview, and deploys. Set the project's root
+   directory to `projects/audiobook-scrobbler/web`.
+5. Settings → *Probe Hardcover*, or `node scripts/hardcover-probe.mjs`. Once
+   the probe reports the mutations exist, set `HARDCOVER_DRY_RUN=false`.
 
-Tests: `npm test` (pure logic: normalization, sessions, progress, finish rules).
+Tests: `npm test` (pure logic: normalization, sessions, progress, finish,
+matching, plus fixtures captured from the real players).
+
+### The cron
+
+`vercel.json` schedules `/api/cron/evaluate` daily, because Hobby accounts
+refuse anything more frequent. The phone does not wait for it: `ActionsWorker`
+calls the same endpoint with the ordinary API token before each 15-minute
+poll, so stall prompts appear within the quarter hour. The daily server run is
+only a backstop for stretches when the phone is off.
 
 ## Phone setup
 
 1. Download the debug APK from the *audiobook-scrobbler* GitHub Actions run
    (or build with Android Studio from `android/`) and sideload it.
-2. Open the app, enter the server URL and `API_TOKEN`, tap *Grant notification
-   access* and allow it, and allow notifications.
-3. Play something. The app's status panel shows the sessions it can see and
-   the upload queue; the PWA's *Raw events* panel shows what arrived.
+2. Open the app, tap the gear, fill in the server address and `API_TOKEN`,
+   grant notification access and allow notifications.
+3. Play something. It appears under *Apps to watch* in Settings the moment the
+   phone reports a media session for it; switch it on to start recording.
 
 ## API
 
@@ -85,9 +100,13 @@ All routes take `Authorization: Bearer <API_TOKEN>` (the PWA uses a cookie set b
   event carries the whole `MediaMetadata` bag in `raw`.
 - Outbox is SQLite (`events.db`); `UploadWorker` drains it whenever there's
   network, `ActionsWorker` polls for prompts every 15 min and after uploads.
-- *Capture every media app* is a discovery mode: use it once to learn a
-  player's package name from the status panel, then put that name in the
-  allow-list here and in the server's `allowed_apps` setting.
+- *Apps to watch* in Settings lists every media app the phone has shown us,
+  each with a switch. Only the ones switched on are recorded. The server keeps
+  its own `allowed_apps` setting as a second filter.
+- The UI is Compose, in the web app's palette so the two look like one
+  product, and dark-only because the web app is. Icons are drawn rather than
+  pulled from an icon pack.
+- A prompt notification opens that prompt inside the app, not the PWA.
 - Build: `./gradlew assembleDebug` with the Android SDK installed, or take the
   APK artifact from the GitHub Actions run.
 
