@@ -3,6 +3,8 @@ import type { Chapter, Progress } from './types';
 export interface ProgressInput {
   chapter_idx: number | null;
   chapter_position_ms: number | null;
+  /** DURATION reported with the last position: a chapter for Audible/Libro.fm, the whole book for Libby. */
+  last_duration_ms?: number | null;
   chapter_count: number | null; // from the player's queue, if seen
   chapters: Chapter[];
   runtime_seconds: number | null; // from the matched edition
@@ -38,6 +40,12 @@ export function computeProgress(input: ProgressInput): Progress {
       const pos = prefix + chapter_position_ms;
       return { pct: runtimeMs ? Math.min(1, pos / runtimeMs) : null, basis: 'chapters', book_position_ms: pos };
     }
+  }
+
+  // No chapter index at all (Libby): the player's position is absolute in the
+  // book and DURATION is the whole book, so the ratio is the progress.
+  if (chapter_idx == null && chapter_position_ms != null && input.last_duration_ms != null && input.last_duration_ms > 0) {
+    return { pct: Math.min(1, chapter_position_ms / input.last_duration_ms), basis: 'position', book_position_ms: chapter_position_ms };
   }
 
   if (runtimeMs && input.cumulative_book_seconds > 0) {

@@ -1,12 +1,12 @@
 import { db } from './supabase';
 import { mergeSettings, fieldMapFor } from './settings';
-import { extractIdentity, sourceKey } from './normalize';
+import { extractIdentifier, extractIdentity, sourceKey } from './normalize';
 import { computeSessions } from './sessions';
 import { computeProgress } from './progress';
 import { shouldAutoFinish } from './finish';
-import { matchBook } from './matching';
+import { matchBook, type BookRow } from './matching';
 import { syncRead } from './sync';
-import type { IncomingEvent, Settings, StoredEvent } from './types';
+import type { ExternalId, IncomingEvent, Settings, StoredEvent } from './types';
 
 export async function loadSettings(userId: string): Promise<Settings> {
   const { data } = await db().from('settings').select('key, value').eq('user_id', userId);
@@ -21,27 +21,97 @@ interface ReadRow {
   last_activity_at: string;
 }
 
-async function getOrCreateBook(userId: string, app: string, title: string, author: string | null, settings: Settings, cache: Map<string, string>) {
-  const key = sourceKey(app, title, author);
-  const cached = cache.get(key);
-  if (cached) return { id: cached, created: false };
-  const existing = await db().from('books').select('id').eq('user_id', userId).eq('source_key', key).maybeSingle();
-  if (existing.data) {
-    cache.set(key, existing.data.id);
-    return { id: existing.data.id, created: false };
-  }
-  const { data, error } = await db()
-    .from('books')
-    .insert({ user_id: userId, source_app: app, source_title: title, source_author: author, source_key: key, title, author })
-    .select('id, user_id, title, author, match_status')
-    .single();
-  if (error || !data) throw new Error(`book insert failed: ${error?.message}`);
-  cache.set(key, data.id);
+const BOOK_COLS = 'id, user_id, title, author, match_status, external_id, external_id_kind, source_key';
+
+interface BookIdentity {
+  app: string;
+  title: string;
+  author: string | null;
+  external: ExternalId | null;
+  /** Whole-book runtime when the player reports one (Libby); else null. */
+  observedRuntime: number | null;
+}
+
+async function tryMatch(book: Record<string, unknown>, settings: Settings, observedRuntime: number | null) {
   try {
-    await matchBook(data, settings);
+    await matchBook({ ...(book as unknown as BookRow), observed_runtime_seconds: observedRuntime }, settings);
   } catch (e) {
     console.error('match failed', e);
   }
+}
+
+/**
+ * Resolve an event to a book row. Identity is, in order: the player's own id
+ * (survives the player changing its title string), then normalized
+ * title+author, then title alone for the authorless first events Libby and
+ * Libro.fm send before the author arrives.
+ */
+async function getOrCreateBook(userId: string, id: BookIdentity, settings: Settings, cache: Map<string, string>) {
+  const { app, title, author, external, observedRuntime } = id;
+  const key = sourceKey(app, title, author);
+  const cached = cache.get(key);
+  if (cached) return { id: cached, created: false };
+
+  // 1. The player's own identifier.
+  if (external) {
+    const byId = await db().from('books').select(BOOK_COLS).eq('user_id', userId)
+      .eq('external_id_kind', external.kind).eq('external_id', external.value).maybeSingle();
+    if (byId.data) {
+      cache.set(key, byId.data.id);
+      if (author && !byId.data.author) {
+        await db().from('books').update({ source_key: key, source_author: author, author }).eq('id', byId.data.id);
+        if (byId.data.match_status !== 'confirmed') await tryMatch({ ...byId.data, author }, settings, observedRuntime);
+      }
+      return { id: byId.data.id, created: false };
+    }
+  }
+
+  // 2. Normalized title + author.
+  const existing = await db().from('books').select(BOOK_COLS).eq('user_id', userId).eq('source_key', key).maybeSingle();
+  if (existing.data) {
+    cache.set(key, existing.data.id);
+    if (external && !existing.data.external_id) {
+      await db().from('books').update({ external_id: external.value, external_id_kind: external.kind }).eq('id', existing.data.id);
+    }
+    return { id: existing.data.id, created: false };
+  }
+
+  // 3. Libby and Libro.fm publish the title a beat before the author. An
+  // authorless event joins the same-titled book; an authorless book takes the
+  // author when it arrives and is re-matched, because its first match could
+  // only have been made on the title (never auto-accepted any more).
+  const titleOnly = sourceKey(app, title, null);
+  if (!author) {
+    const byTitle = await db().from('books').select(BOOK_COLS).eq('user_id', userId).like('source_key', `${titleOnly}%`).limit(1).maybeSingle();
+    if (byTitle.data) {
+      cache.set(key, byTitle.data.id);
+      return { id: byTitle.data.id, created: false };
+    }
+  } else {
+    const authorless = await db().from('books').select(BOOK_COLS).eq('user_id', userId).eq('source_key', titleOnly).maybeSingle();
+    if (authorless.data) {
+      await db().from('books').update({ source_key: key, source_author: author, author }).eq('id', authorless.data.id);
+      cache.set(key, authorless.data.id);
+      cache.delete(titleOnly);
+      // Never clobber a match the user confirmed by hand.
+      if (authorless.data.match_status !== 'confirmed') {
+        await tryMatch({ ...authorless.data, author, source_key: key }, settings, observedRuntime);
+      }
+      return { id: authorless.data.id, created: false };
+    }
+  }
+
+  const { data, error } = await db()
+    .from('books')
+    .insert({
+      user_id: userId, source_app: app, source_title: title, source_author: author, source_key: key, title, author,
+      external_id: external?.value ?? null, external_id_kind: external?.kind ?? null,
+    })
+    .select(BOOK_COLS)
+    .single();
+  if (error || !data) throw new Error(`book insert failed: ${error?.message}`);
+  cache.set(key, data.id);
+  await tryMatch(data, settings, observedRuntime);
   return { id: data.id, created: true };
 }
 
@@ -105,7 +175,15 @@ export async function ingest(userId: string, device: { id: string; name?: string
     let bookId: string | null = null;
     let readId: string | null = null;
     if (title) {
-      const b = await getOrCreateBook(userId, e.app_package, title, author ?? null, settings, bookCache);
+      // A player that reports no chapter index is reporting one duration for
+      // the whole book (Libby); that is a runtime we can match editions against.
+      const observedRuntime = e.chapter_idx == null && e.duration_ms && e.duration_ms > 0 ? Math.round(e.duration_ms / 1000) : null;
+      const b = await getOrCreateBook(
+        userId,
+        { app: e.app_package, title, author: author ?? null, external: extractIdentifier(e.app_package, e.raw), observedRuntime },
+        settings,
+        bookCache,
+      );
       if (b.created) result.books_created++;
       bookId = b.id;
       const r = await getOrCreateRead(userId, b.id, e.occurred_at, settings, readCache);
@@ -137,7 +215,9 @@ export async function ingest(userId: string, device: { id: string; name?: string
     if (bookId && e.event_type === 'queue' && e.queue) {
       e.queue.forEach((q, idx) => {
         const k = `${bookId}:${idx}`;
-        chapterUpserts.set(k, { ...(chapterUpserts.get(k) ?? { book_id: bookId!, idx }), title: q.title ?? null });
+        // Libro.fm titles every track with the book name: that is not a chapter name.
+        const qt = q.title && q.title !== title ? q.title : null;
+        chapterUpserts.set(k, { ...(chapterUpserts.get(k) ?? { book_id: bookId!, idx }), title: qt });
       });
     }
     if (bookId && e.chapter_idx != null && e.duration_ms != null && e.duration_ms > 0) {
@@ -194,6 +274,7 @@ export async function recomputeRead(readId: string, settings: Settings): Promise
   const progress = computeProgress({
     chapter_idx: lastPos?.chapter_idx ?? null,
     chapter_position_ms: lastPos?.position_ms ?? null,
+    last_duration_ms: lastPos?.duration_ms ?? null,
     chapter_count: chapterCount,
     chapters: chapters ?? [],
     runtime_seconds: (read.books as { runtime_seconds: number | null } | null)?.runtime_seconds ?? null,
@@ -205,6 +286,7 @@ export async function recomputeRead(readId: string, settings: Settings): Promise
   const update: Record<string, unknown> = {
     last_activity_at: last.occurred_at,
     chapter_idx: lastPos?.chapter_idx ?? null,
+    chapter_count: chapterCount,
     chapter_position_ms: lastPos?.position_ms ?? null,
     book_position_ms: progress.book_position_ms,
     book_seconds_listened: cumulative,

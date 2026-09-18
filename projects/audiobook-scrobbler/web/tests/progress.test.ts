@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeProgress } from '@/lib/progress';
 import { shouldAutoFinish, isStalled } from '@/lib/finish';
+import libby from './fixtures/libby-the-body.json';
 
 const base = {
   chapter_idx: null as number | null,
@@ -43,6 +44,15 @@ describe('computeProgress', () => {
     expect(p.pct).toBe(0.5);
   });
 
+  it('uses absolute position over a book-wide duration when there is no chapter index (Libby)', () => {
+    const p = computeProgress({ ...base, chapter_position_ms: libby.event.position_ms, last_duration_ms: libby.event.duration_ms });
+    expect(p.basis).toBe('position');
+    expect(p.book_position_ms).toBe(libby.event.position_ms);
+    expect(p.pct).toBeCloseTo(4961357 / 50679215, 5);
+    // A chapter-relative position (Audible/Libro.fm) must not be read as absolute.
+    expect(computeProgress({ ...base, chapter_idx: 66, chapter_position_ms: 300_000, last_duration_ms: 924_609 }).basis).not.toBe('position');
+  });
+
   it('reports none with no runtime', () => {
     expect(computeProgress({ ...base, cumulative_book_seconds: 500 }).basis).toBe('none');
   });
@@ -56,6 +66,9 @@ describe('finish rules', () => {
   it('auto-finishes on chapter-basis progress above threshold', () => {
     expect(shouldAutoFinish({ progress: { pct: 0.985, basis: 'chapters', book_position_ms: 1 }, chapter_idx: 10, chapter_count: 12, finish_threshold: 0.98 })).toBe(true);
     expect(shouldAutoFinish({ progress: { pct: 0.97, basis: 'chapters', book_position_ms: 1 }, chapter_idx: 11, chapter_count: 12, finish_threshold: 0.98 })).toBe(false);
+  });
+  it('position basis auto-finishes like chapters', () => {
+    expect(shouldAutoFinish({ progress: { pct: 0.99, basis: 'position', book_position_ms: 1 }, chapter_idx: null, chapter_count: null, finish_threshold: 0.98 })).toBe(true);
   });
   it('cumulative basis needs the last chapter', () => {
     expect(shouldAutoFinish({ progress: { pct: 0.99, basis: 'cumulative', book_position_ms: null }, chapter_idx: 5, chapter_count: 12, finish_threshold: 0.98 })).toBe(false);

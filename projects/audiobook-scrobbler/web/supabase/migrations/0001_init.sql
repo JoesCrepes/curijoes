@@ -74,7 +74,7 @@ create table reads (
   wall_seconds_listened integer not null default 0,
   progress_pct real,
   progress_basis text not null default 'none'
-    check (progress_basis in ('none','chapters','cumulative','app')),
+    check (progress_basis in ('none','chapters','position','cumulative','app')),
   finish_source text check (finish_source in ('auto','manual','timeout','app')),
   hardcover_user_book_id integer,
   hardcover_read_id integer,
