@@ -1,4 +1,4 @@
-import type { AppFieldMap } from './types';
+import type { AppFieldMap, ExternalId } from './types';
 
 const NOISE = [
   /\((unabridged|abridged)\)/gi,
@@ -56,6 +56,39 @@ export function extractIdentity(raw: Record<string, unknown> | undefined, map: A
   let chapter = firstString(raw, map.chapter);
   if (chapter && title && chapter === title) chapter = null;
   return { title, author, chapter };
+}
+
+const MD = 'android.media.metadata.';
+const ASIN = /^B[0-9A-Z]{9}$/;
+// Libro.fm serves covers as covers.libro.fm/<isbn13>_<size>.jpg, which is the
+// only place it exposes the audiobook's ISBN.
+const LIBROFM_COVER = /covers\.libro\.fm\/(\d{13})/;
+
+/**
+ * The player's own id for the book, verified against real captures:
+ *   Audible   MEDIA_ID is the ASIN (also the media_id on every queue item)
+ *   Libro.fm  no id field, but the cover URL carries the audiobook ISBN-13
+ *   Libby     MEDIA_ID is empty; `titleId` is OverDrive's own id
+ * Audible's ASIN is marketplace-specific, so Hardcover often will not have it;
+ * it is still worth keeping as a local identity (see identifier_matches).
+ */
+export function extractIdentifier(appPackage: string, raw: Record<string, unknown> | undefined): ExternalId | null {
+  if (!raw) return null;
+  const str = (k: string) => (typeof raw[k] === 'string' ? (raw[k] as string).trim() : '');
+
+  const mediaId = str(`${MD}MEDIA_ID`);
+  if (ASIN.test(mediaId)) return { kind: 'asin', value: mediaId };
+
+  for (const k of [`${MD}ART_URI`, `${MD}ALBUM_ART_URI`, `${MD}DISPLAY_ICON_URI`]) {
+    const m = LIBROFM_COVER.exec(str(k));
+    if (m) return { kind: 'isbn13', value: m[1] };
+  }
+
+  const titleId = str('titleId');
+  if (titleId && /^\d+$/.test(titleId)) return { kind: 'overdrive', value: titleId };
+
+  void appPackage; // keyed on the metadata shape, not the package name
+  return null;
 }
 
 /** Token-set Dice coefficient for fuzzy title/author comparison. */

@@ -66,6 +66,13 @@ export interface AppFieldMap {
   chapter: string[];
 }
 
+/** The player's own catalog id for a book. */
+export type IdentifierKind = 'asin' | 'isbn13' | 'overdrive';
+export interface ExternalId {
+  kind: IdentifierKind;
+  value: string;
+}
+
 export interface Settings {
   session_gap_seconds: number;
   finish_threshold: number; // 0..1, auto-finish

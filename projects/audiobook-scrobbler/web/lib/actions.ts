@@ -1,8 +1,23 @@
 import { db } from './supabase';
-import { candidateFields } from './matching';
+import { candidateFields, rememberIdentifier } from './matching';
 import { syncRead } from './sync';
 import { audiobookEditions, hardcoverEnabled } from './hardcover';
+import { loadSettings, recomputeRead } from './ingest';
 import type { MatchCandidate } from './types';
+
+/**
+ * A match decides the book's runtime, and runtime decides progress. So after a
+ * match changes, every read of that book is recomputed before it is synced —
+ * otherwise a book stays at "progress unknown" until the next event arrives.
+ */
+async function refreshReads(userId: string, bookId: string): Promise<void> {
+  const settings = await loadSettings(userId);
+  const { data: reads } = await db().from('reads').select('id').eq('book_id', bookId);
+  for (const r of reads ?? []) {
+    await recomputeRead(r.id, settings);
+    await syncRead(r.id);
+  }
+}
 
 export type Resolution =
   | { candidate: number } // index into payload.candidates / book.match_candidates
@@ -11,6 +26,25 @@ export type Resolution =
   | { finished: true }
   | { not_yet: true }
   | { dnf: true };
+
+/**
+ * A confirmation is the strongest signal we ever get. Pin the player's own id
+ * to it so the same identifier resolves instantly next time, even for books
+ * Hardcover cannot be searched into (Audible's regional ASINs), and even if the
+ * player later reports a different title string.
+ */
+async function recordIdentifier(
+  userId: string,
+  book: { external_id?: string | null; external_id_kind?: string | null } | null | undefined,
+  c: MatchCandidate,
+): Promise<void> {
+  if (!book?.external_id || !book.external_id_kind) return;
+  try {
+    await rememberIdentifier(userId, { kind: book.external_id_kind as 'asin' | 'isbn13' | 'overdrive', value: book.external_id }, c);
+  } catch (e) {
+    console.error('could not remember identifier', e);
+  }
+}
 
 export async function resolveAction(userId: string, actionId: string, resolution: Resolution): Promise<{ ok: boolean; error?: string }> {
   const { data: action } = await db().from('actions').select('*').eq('id', actionId).eq('user_id', userId).maybeSingle();
@@ -21,11 +55,12 @@ export async function resolveAction(userId: string, actionId: string, resolution
     if ('skip' in resolution) {
       await db().from('books').update({ match_status: 'no_match', updated_at: new Date().toISOString() }).eq('id', action.book_id);
     } else if ('candidate' in resolution) {
-      const { data: book } = await db().from('books').select('match_candidates').eq('id', action.book_id).single();
+      const { data: book } = await db().from('books').select('match_candidates, external_id, external_id_kind').eq('id', action.book_id).single();
       const cands = ((book?.match_candidates as MatchCandidate[] | null) ?? []);
       const c = cands[resolution.candidate];
       if (!c) return { ok: false, error: 'bad candidate index' };
       await db().from('books').update({ ...candidateFields(c), match_status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', action.book_id);
+      await recordIdentifier(userId, book, c);
     } else if ('hardcover_book_id' in resolution) {
       let editionId = resolution.hardcover_edition_id ?? null;
       let runtime: number | null = null;
@@ -44,12 +79,17 @@ export async function resolveAction(userId: string, actionId: string, resolution
         match_status: 'confirmed',
         updated_at: new Date().toISOString(),
       }).eq('id', action.book_id);
+      const { data: bk } = await db().from('books').select('external_id, external_id_kind, cover_url').eq('id', action.book_id).single();
+      await recordIdentifier(userId, bk, {
+        source: 'hardcover', book_id: resolution.hardcover_book_id, edition_id: editionId,
+        title: '', author: null, isbn13: isbn, runtime_seconds: runtime, cover_url: bk?.cover_url ?? null, score: 1,
+      });
     } else {
       return { ok: false, error: 'bad resolution for match_book' };
     }
-    // A confirmed match makes every read of that book syncable.
-    const { data: reads } = await db().from('reads').select('id').eq('book_id', action.book_id);
-    for (const r of reads ?? []) await syncRead(r.id);
+    // A confirmed match makes every read of that book syncable, and gives them
+    // a runtime to compute progress against.
+    await refreshReads(userId, action.book_id);
   } else if (action.type === 'confirm_finished') {
     if ('finished' in resolution || 'dnf' in resolution) {
       const status = 'finished' in resolution ? 'finished' : 'dnf';

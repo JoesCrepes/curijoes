@@ -40,7 +40,7 @@ npm run dev
 
 1. Create a Supabase project and run `web/supabase/migrations/0001_init.sql`
    in the SQL editor.
-2. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`
+2. Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `API_TOKEN`
    (`openssl rand -hex 32`), `CRON_SECRET`, and optionally `HARDCOVER_TOKEN`.
 3. Deploy to Vercel with the project root set to
    `projects/audiobook-scrobbler/web`. `vercel.json` schedules the hourly

@@ -8,7 +8,8 @@
     "start": "next start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "replay": "esbuild scripts/replay.ts --bundle --platform=node --format=cjs --loader:.html=text --outfile=.replay/replay.cjs --log-level=warning && node .replay/replay.cjs"
+    "replay": "esbuild scripts/replay.ts --bundle --platform=node --format=cjs --loader:.html=text --outfile=.replay/replay.cjs --log-level=warning && node .replay/replay.cjs",
+    "check": "node scripts/check-env.mjs"
   },
   "dependencies": {
     "next": "^15.0.0",

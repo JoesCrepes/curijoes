@@ -37,6 +37,9 @@ export interface HardcoverHit {
   author: string | null;
   isbns: string[];
   cover_url: string | null;
+  /** Runtime of the default audiobook edition, straight from the search index. */
+  audio_seconds: number | null;
+  has_audiobook: boolean;
 }
 
 export async function searchBooks(q: string): Promise<HardcoverHit[]> {
@@ -50,12 +53,15 @@ export async function searchBooks(q: string): Promise<HardcoverHit[]> {
     const d = h.document;
     const authors = (d.author_names as string[] | undefined) ?? [];
     const image = d.image as { url?: string } | undefined;
+    const audio = Number(d.audio_seconds);
     return {
       book_id: Number(d.id),
       title: String(d.title ?? ''),
       author: authors[0] ?? null,
       isbns: (d.isbns as string[] | undefined) ?? [],
       cover_url: image?.url ?? null,
+      audio_seconds: Number.isFinite(audio) && audio > 0 ? audio : null,
+      has_audiobook: d.has_audiobook === true,
     };
   });
 }
@@ -78,6 +84,60 @@ export async function audiobookEditions(bookId: number): Promise<HardcoverEditio
     { bookId },
   );
   return (data.editions ?? []).map((e) => ({ id: e.id, isbn_13: e.isbn_13, audio_seconds: e.audio_seconds, title: e.title, cover_url: e.image?.url ?? null }));
+}
+
+const EDITION_FIELDS = `id book_id asin isbn_13 audio_seconds reading_format_id title image { url }
+  book { id title contributions { author { name } } }`;
+
+export interface EditionHit {
+  book_id: number;
+  edition_id: number;
+  title: string;
+  author: string | null;
+  isbn13: string | null;
+  runtime_seconds: number | null;
+  cover_url: string | null;
+}
+
+interface EditionRow {
+  id: number;
+  book_id: number;
+  asin: string | null;
+  isbn_13: string | null;
+  audio_seconds: number | null;
+  reading_format_id: number | null;
+  title: string | null;
+  image: { url: string } | null;
+  book: { title: string; contributions: { author: { name: string } | null }[] } | null;
+}
+
+function toHit(e: EditionRow): EditionHit {
+  return {
+    book_id: e.book_id,
+    edition_id: e.id,
+    title: e.book?.title ?? e.title ?? '',
+    author: e.book?.contributions?.map((c) => c.author?.name).find(Boolean) ?? null,
+    isbn13: e.isbn_13,
+    runtime_seconds: e.audio_seconds,
+    cover_url: e.image?.url ?? null,
+  };
+}
+
+/**
+ * Exact edition lookup by the player's own id. Verified live: Libro.fm's ISBN-13
+ * lands the right audiobook edition first try. Audible's ASIN often misses,
+ * because Hardcover carries other regional ASINs for the same title.
+ */
+export async function editionByIdentifier(kind: 'asin' | 'isbn13', value: string): Promise<EditionHit | null> {
+  const column = kind === 'asin' ? 'asin' : 'isbn_13';
+  const data = await gql<{ editions: EditionRow[] }>(
+    `query ById($v: String!) { editions(where: { ${column}: { _eq: $v } }, limit: 5) { ${EDITION_FIELDS} } }`,
+    { v: value },
+  );
+  const rows = data.editions ?? [];
+  // An audiobook edition is what we want; fall back to any edition of that book.
+  const best = rows.find((e) => e.reading_format_id === AUDIOBOOK_FORMAT_ID) ?? rows[0];
+  return best ? toHit(best) : null;
 }
 
 export interface SyncOp {
