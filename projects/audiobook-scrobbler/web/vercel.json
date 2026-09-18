@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "crons": [
+    { "path": "/api/cron/evaluate", "schedule": "0 * * * *" }
+  ]
+}
