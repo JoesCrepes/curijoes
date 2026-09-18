@@ -49,7 +49,8 @@ export interface Session {
   event_count: number;
 }
 
-export type ProgressBasis = 'none' | 'chapters' | 'cumulative' | 'app';
+/** chapters: chapter map prefix + in-chapter position; position: the player's absolute position over a book-wide DURATION (Libby); cumulative: listened seconds over runtime; app: the player said it's done. */
+export type ProgressBasis = 'none' | 'chapters' | 'position' | 'cumulative' | 'app';
 
 export interface Progress {
   pct: number | null; // 0..1

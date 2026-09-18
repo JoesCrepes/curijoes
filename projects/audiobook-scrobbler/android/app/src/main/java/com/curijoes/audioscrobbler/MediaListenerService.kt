@@ -1,6 +1,7 @@
 package com.curijoes.audioscrobbler
 
 import android.content.ComponentName
+import android.content.SharedPreferences
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSession
@@ -27,6 +28,8 @@ class MediaListenerService : NotificationListenerService() {
         var metaSig = ""
         var queueSig = ""
         var lastState = PlaybackState.STATE_NONE
+        /** Snapshot behind the last emitted event, to tell a seek from a routine re-publish. */
+        var lastSnapshot: PlaybackState? = null
     }
 
     private lateinit var msm: MediaSessionManager
@@ -37,6 +40,11 @@ class MediaListenerService : NotificationListenerService() {
     private val component by lazy { ComponentName(this, MediaListenerService::class.java) }
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers -> sync(controllers ?: emptyList()) }
+
+    // Allow-list edits (Settings screen, debug receiver) apply to sessions that are already open.
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == Prefs.KEY_ALLOWED_APPS || key == Prefs.KEY_CAPTURE_ALL) resync()
+    }
 
     private val sampler = object : Runnable {
         override fun run() {
@@ -60,11 +68,16 @@ class MediaListenerService : NotificationListenerService() {
             Log.w(TAG, "no notification access yet", e)
         }
         handler.postDelayed(sampler, SAMPLE_MS)
+        prefs.registerOnChange(prefsListener)
     }
 
     override fun onListenerConnected() {
         ServiceState.connected = true
-        try { sync(msm.getActiveSessions(component)) } catch (e: SecurityException) { Log.w(TAG, "sync on connect", e) }
+        resync()
+    }
+
+    private fun resync() {
+        try { sync(msm.getActiveSessions(component)) } catch (e: SecurityException) { Log.w(TAG, "resync without notification access", e) }
     }
 
     override fun onListenerDisconnected() {
@@ -73,6 +86,7 @@ class MediaListenerService : NotificationListenerService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(sampler)
+        prefs.unregisterOnChange(prefsListener)
         try { msm.removeOnActiveSessionsChangedListener(sessionsListener) } catch (_: Exception) {}
         for ((_, t) in tracked) t.controller.unregisterCallback(t.callback)
         tracked.clear()
@@ -84,7 +98,10 @@ class MediaListenerService : NotificationListenerService() {
         for (c in controllers) {
             val pkg = c.packageName
             seen.add(pkg)
-            if (!prefs.shouldCapture(pkg)) continue
+            if (!prefs.shouldCapture(pkg)) {
+                untrack(pkg, destroyed = false) // removed from the allow-list while open
+                continue
+            }
             if (tracked.containsKey(pkg)) continue
             val t = Tracked(c, object : MediaController.Callback() {
                 override fun onMetadataChanged(metadata: MediaMetadata?) = onMeta(pkg)
@@ -134,17 +151,24 @@ class MediaListenerService : NotificationListenerService() {
 
     private fun onState(pkg: String) {
         val t = tracked[pkg] ?: return
-        val s = t.controller.playbackState?.state ?: PlaybackState.STATE_NONE
+        val snap = t.controller.playbackState
+        val s = snap?.state ?: PlaybackState.STATE_NONE
+        // Buffering is transparent: Audible goes PAUSED→BUFFERING→PAUSED on every skip,
+        // Spotify flickers PLAYING↔BUFFERING; neither is a listening-state change.
+        if (s == PlaybackState.STATE_BUFFERING || s == PlaybackState.STATE_CONNECTING) return
         val was = t.lastState
         if (s == was) {
-            // Same state but a new snapshot: a seek while playing/paused. Log it as a position tick.
-            if (s == PlaybackState.STATE_PLAYING || s == PlaybackState.STATE_PAUSED) emit("position", pkg, t)
+            // Same state, new snapshot. Spotify re-publishes several times a second, so
+            // only log it when the position jumped (a seek) or the speed changed.
+            if ((s == PlaybackState.STATE_PLAYING || s == PlaybackState.STATE_PAUSED) && EventBuilder.isSeekOrSpeedChange(t.lastSnapshot, snap)) {
+                emit("position", pkg, t)
+            }
             return
         }
         t.lastState = s
         when (s) {
             PlaybackState.STATE_PLAYING -> emit("play", pkg, t)
-            PlaybackState.STATE_PAUSED -> if (was == PlaybackState.STATE_PLAYING || was == PlaybackState.STATE_BUFFERING) emit("pause", pkg, t)
+            PlaybackState.STATE_PAUSED -> if (was == PlaybackState.STATE_PLAYING) emit("pause", pkg, t)
             PlaybackState.STATE_STOPPED, PlaybackState.STATE_NONE -> if (was == PlaybackState.STATE_PLAYING || was == PlaybackState.STATE_PAUSED) emit("stop", pkg, t)
             else -> {}
         }
@@ -152,6 +176,7 @@ class MediaListenerService : NotificationListenerService() {
 
     private fun emit(type: String, pkg: String, t: Tracked, queue: List<MediaSession.QueueItem>? = null) {
         try {
+            t.lastSnapshot = t.controller.playbackState
             store.insert(EventBuilder.build(type, pkg, t.controller, queue))
             scheduleUpload(this)
         } catch (e: Exception) {

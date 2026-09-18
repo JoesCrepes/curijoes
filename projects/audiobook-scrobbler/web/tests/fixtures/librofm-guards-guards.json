@@ -1,0 +1,47 @@
+{
+  "note": "Captured from Libro.fm on a Pixel 10 Pro Fold, Android 17, 2026-09-18. One queue item per track, all titled with the book; DURATION is the track length; MEDIA_ID is the current track id.",
+  "event": {
+    "id": "acfc488c-9202-484a-ad28-44cc73a31930",
+    "app_package": "fm.libro.librofm",
+    "event_type": "pause",
+    "occurred_at": "2026-09-18T14:01:52.856297Z",
+    "is_playing": false,
+    "position_ms": 305273,
+    "duration_ms": 924609,
+    "playback_speed": 1,
+    "chapter_idx": 66,
+    "chapter_count": 121,
+    "raw": {
+      "android.media.metadata.YEAR": 2023,
+      "android.media.metadata.ARTIST": "Terry Pratchett",
+      "android.media.metadata.ART_URI": "https://covers.libro.fm/9781473588165_1120.jpg",
+      "android.media.metadata.DURATION": 924609,
+      "android.media.metadata.ALBUM_ART_URI": "https://covers.libro.fm/9781473588165_1120.jpg",
+      "android.media.metadata.MEDIA_ID": "1559",
+      "android.media.metadata.DISPLAY_ICON_URI": "https://covers.libro.fm/9781473588165_1120.jpg",
+      "android.media.metadata.ALBUM": "Guards! Guards!",
+      "android.media.metadata.TITLE": "Guards! Guards!",
+      "_state": 2,
+      "_active_queue_id": 66,
+      "_buffered_ms": 412367
+    }
+  },
+  "queue_len": 121,
+  "queue_sample": [
+    {
+      "title": "Guards! Guards!",
+      "subtitle": null,
+      "media_id": "1493"
+    },
+    {
+      "title": "Guards! Guards!",
+      "subtitle": null,
+      "media_id": "1494"
+    },
+    {
+      "title": "Guards! Guards!",
+      "subtitle": null,
+      "media_id": "1495"
+    }
+  ]
+}

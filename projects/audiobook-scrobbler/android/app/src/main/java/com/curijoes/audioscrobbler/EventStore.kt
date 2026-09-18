@@ -54,6 +54,12 @@ class EventStore private constructor(context: Context) : SQLiteOpenHelper(contex
 
     fun count(): Long = readableDatabase.rawQuery("select count(*) from pending", null).use { it.moveToFirst(); it.getLong(0) }
 
+    /** Drop everything, queued and logged. Used by the debug config receiver and tests. */
+    fun clear() {
+        writableDatabase.execSQL("delete from pending")
+        writableDatabase.execSQL("delete from log")
+    }
+
     fun recentLog(): List<String> {
         val out = ArrayList<String>()
         readableDatabase.rawQuery("select created_at, summary from log order by seq desc limit 12", null).use { c ->

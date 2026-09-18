@@ -30,6 +30,32 @@ async function getOrCreateBook(userId: string, app: string, title: string, autho
     cache.set(key, existing.data.id);
     return { id: existing.data.id, created: false };
   }
+  // Libby and Libro.fm publish the title before the author. An authorless
+  // event joins the same-titled book; an authorless book takes the author
+  // (and the full key) when it finally shows up.
+  const titleOnly = sourceKey(app, title, null);
+  if (!author) {
+    const byTitle = await db().from('books').select('id').eq('user_id', userId).like('source_key', `${titleOnly}%`).limit(1).maybeSingle();
+    if (byTitle.data) {
+      cache.set(key, byTitle.data.id);
+      return { id: byTitle.data.id, created: false };
+    }
+  } else {
+    const authorless = await db().from('books').select('id, match_status').eq('user_id', userId).eq('source_key', titleOnly).maybeSingle();
+    if (authorless.data) {
+      await db().from('books').update({ source_key: key, source_author: author, author }).eq('id', authorless.data.id);
+      cache.set(key, authorless.data.id);
+      cache.delete(titleOnly);
+      if (authorless.data.match_status === 'unmatched' || authorless.data.match_status === 'no_match') {
+        try {
+          await matchBook({ id: authorless.data.id, user_id: userId, title, author, match_status: authorless.data.match_status }, settings);
+        } catch (e) {
+          console.error('match failed', e);
+        }
+      }
+      return { id: authorless.data.id, created: false };
+    }
+  }
   const { data, error } = await db()
     .from('books')
     .insert({ user_id: userId, source_app: app, source_title: title, source_author: author, source_key: key, title, author })
@@ -137,7 +163,9 @@ export async function ingest(userId: string, device: { id: string; name?: string
     if (bookId && e.event_type === 'queue' && e.queue) {
       e.queue.forEach((q, idx) => {
         const k = `${bookId}:${idx}`;
-        chapterUpserts.set(k, { ...(chapterUpserts.get(k) ?? { book_id: bookId!, idx }), title: q.title ?? null });
+        // Libro.fm titles every track with the book name: that is not a chapter name.
+        const qt = q.title && q.title !== title ? q.title : null;
+        chapterUpserts.set(k, { ...(chapterUpserts.get(k) ?? { book_id: bookId!, idx }), title: qt });
       });
     }
     if (bookId && e.chapter_idx != null && e.duration_ms != null && e.duration_ms > 0) {
@@ -194,6 +222,7 @@ export async function recomputeRead(readId: string, settings: Settings): Promise
   const progress = computeProgress({
     chapter_idx: lastPos?.chapter_idx ?? null,
     chapter_position_ms: lastPos?.position_ms ?? null,
+    last_duration_ms: lastPos?.duration_ms ?? null,
     chapter_count: chapterCount,
     chapters: chapters ?? [],
     runtime_seconds: (read.books as { runtime_seconds: number | null } | null)?.runtime_seconds ?? null,

@@ -32,21 +32,36 @@ queue is the source.
 
 ## Things that need a real device or network to settle
 
-These could not be verified from the sandbox and are the first things to check:
+Items 1, 2 and 4 were settled on 2026-09-18 with `android/tools/capture.py`
+against a Pixel 10 Pro Fold (Android 17); the recordings are in
+`android/tools/captures/` and trimmed fixtures in `web/tests/fixtures/`.
 
-1. **Which MediaMetadata key holds the book title vs. chapter** for Audible,
-   Libro.fm and Libby. The server's `app_field_maps` setting defaults to
-   album→title, artist→author, display-title→chapter. Look at *Raw events* on
-   the home page after the first listen, fix the map in Settings, hit
-   *Reprocess from events*.
-2. **Libro.fm package name** (`fm.libro.librofm` is a guess). The app's
-   Settings screen lists every active media session's package; add the right
-   one to `allowed_apps` on the server.
+1. **Which MediaMetadata key holds the book title vs. chapter** — settled, and
+   every app is different (defaults in `web/lib/settings.ts`):
+   - *Audible*: TITLE = book, AUTHOR = ALBUM = author, ARTIST = chapter name,
+     MEDIA_ID = ASIN, DURATION = chapter length, a 62-item chapter queue with
+     real names ("Part Two: The Present: Chapter 1"), position chapter-relative.
+   - *Libby*: TITLE = ALBUM = DISPLAY_TITLE = book, ARTIST = author,
+     DISPLAY_SUBTITLE = chapter name, DURATION = whole book, position absolute,
+     no queue or chapter index; `titleId` is OverDrive's id.
+   - *Libro.fm*: TITLE = ALBUM = book, ARTIST = author, one queue item per
+     track all titled with the book (no chapter names), DURATION = track
+     length, MEDIA_ID = track id, position track-relative.
+2. **Libro.fm package name** — `fm.libro.librofm` was right.
 3. **Hardcover GraphQL names** (`insert_user_book`, `insert_user_book_read`,
    status ids 2/3/5, `reading_format_id = 2` for audio). `GET /api/hardcover/probe`
    introspects and reports. Keep `HARDCOVER_DRY_RUN=true` until it's green.
-4. Whether the players expose `PlaybackState.position` continuously or only on
-   state change (the app samples every 60 s while playing either way).
+   Still open.
+4. **Position updates** — Libby and Libro.fm re-publish PlaybackState every
+   2–3 s while playing; Spotify several times a second; Audible on state
+   changes and skips (PAUSED→BUFFERING→PAUSED around each skip). The listener
+   now treats BUFFERING as transparent and logs a same-state re-publish only
+   when the position jumps by more than 3 s from where extrapolation predicts
+   (a seek) or the speed changes. The 60 s sample while playing stays.
+
+Follow-ups from the capture: use Audible's ASIN (MEDIA_ID) and Libby's
+`titleId` as stable identities alongside title+author; a per-app allow-list
+GUI in the phone app (the comma-separated field is v1).
 
 ## Nice-to-have bucket
 
@@ -54,12 +69,17 @@ These could not be verified from the sandbox and are the first things to check:
 - Roll-your-own destination / richer stats (minutes per day, streaks, per-app split): all derivable from `sessions`.
 - Fat Android client.
 - Google OAuth (swap `authenticate()`; add `users` rows).
-- **Automated plan → implement → test loop for the mobile app.** The usual
-  mobile answer: instrumented tests on a GitHub Actions emulator
-  (`reactivecircus/android-emulator-runner`) plus a tiny *fake player* app
-  that publishes a scripted `MediaSession` so the listener can be tested
-  end-to-end without Audible; Maestro or Espresso for UI flows; Firebase Test
-  Lab if a real device matrix is ever wanted. The server side already has
-  pure-function tests for sessions/progress/finish and can grow contract
-  tests against a local Supabase.
 - Push instead of poll (FCM or a self-hosted UnifiedPush distributor).
+- Maestro/Espresso for the settings UI; Firebase Test Lab if a real device
+  matrix is ever wanted; server contract tests against a local Supabase.
+
+## Done since (2026-09-18, local session)
+
+- **Automated build → test loop for the Android app** (was a nice-to-have):
+  `android/fakeplayer/` publishes a scripted `MediaSession`, `tools/e2e.py`
+  boots an emulator, installs both apps, runs scripted listens against a mock
+  ingest server and asserts on the events; `EventBuilderTest` covers the
+  event builder and outbox on-device. Same loop runs in CI (`android-emulator`
+  job). See README → *Automated Android test loop*.
+- Listener now re-syncs when the allow-list changes, so adding a package in
+  Settings takes effect on already-open sessions.

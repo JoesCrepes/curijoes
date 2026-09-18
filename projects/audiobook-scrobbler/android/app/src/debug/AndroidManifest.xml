@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only additions: cleartext HTTP so the e2e loop can talk to a mock
+     server on the host, and an adb-reachable receiver to configure the app
+     without touching the UI. Neither ships in release builds. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true">
+        <receiver android:name=".DebugConfigReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="com.curijoes.audioscrobbler.DEBUG_CONFIG" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

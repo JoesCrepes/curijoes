@@ -17,7 +17,7 @@ export function shouldAutoFinish(i: FinishInput): boolean {
   if (progress.basis === 'app') return true;
   if (progress.pct == null) return false;
   if (progress.pct < i.finish_threshold) return false;
-  if (progress.basis === 'chapters') return true;
+  if (progress.basis === 'chapters' || progress.basis === 'position') return true;
   const onLastChapter = i.chapter_idx != null && i.chapter_count != null && i.chapter_idx >= i.chapter_count - 1;
   return progress.basis === 'cumulative' && onLastChapter;
 }
