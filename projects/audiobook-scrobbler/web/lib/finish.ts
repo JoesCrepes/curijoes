@@ -8,9 +8,11 @@ export interface FinishInput {
 }
 
 /**
- * Auto-finish when the book is essentially over. The cumulative basis is
- * inflated by re-listens, so on its own it only counts while on the final
- * chapter.
+ * Auto-finish when the book is essentially over. The cumulative and estimated
+ * bases are not precise enough to end a book by themselves — cumulative is
+ * inflated by re-listens, and an estimated chapter prefix can overshoot when
+ * the unseen chapters are shorter than average — so both only count while on
+ * the final chapter.
  */
 export function shouldAutoFinish(i: FinishInput): boolean {
   const { progress } = i;
@@ -19,7 +21,7 @@ export function shouldAutoFinish(i: FinishInput): boolean {
   if (progress.pct < i.finish_threshold) return false;
   if (progress.basis === 'chapters' || progress.basis === 'position') return true;
   const onLastChapter = i.chapter_idx != null && i.chapter_count != null && i.chapter_idx >= i.chapter_count - 1;
-  return progress.basis === 'cumulative' && onLastChapter;
+  return (progress.basis === 'cumulative' || progress.basis === 'chapters_estimated') && onLastChapter;
 }
 
 export interface StallInput {

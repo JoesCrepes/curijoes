@@ -178,6 +178,7 @@ fun fmtDuration(seconds: Int?): String {
 
 fun fmtBasis(basis: String): String = when (basis) {
     "chapters" -> "from the chapter map"
+    "chapters_estimated" -> "estimated from the chapter map"
     "position" -> "from the player's position"
     "cumulative" -> "from listened time"
     "app" -> "the player said it's done"

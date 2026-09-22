@@ -2,7 +2,7 @@ import { db } from './supabase';
 import { mergeSettings, fieldMapFor } from './settings';
 import { extractIdentifier, extractIdentity, sourceKey } from './normalize';
 import { computeSessions } from './sessions';
-import { computeProgress } from './progress';
+import { computeProgress, lastPositionEvent } from './progress';
 import { shouldAutoFinish } from './finish';
 import { matchBook, type BookRow } from './matching';
 import { syncRead } from './sync';
@@ -267,7 +267,7 @@ export async function recomputeRead(readId: string, settings: Settings): Promise
     await db().from('sessions').insert(sessions.map((s) => ({ ...s, read_id: readId })));
   }
 
-  const lastPos = [...evs].reverse().find((e) => e.position_ms != null);
+  const lastPos = lastPositionEvent(evs);
   const chapterCount = evs.reduce<number | null>((m, e) => (e.chapter_count != null && (m == null || e.chapter_count > m) ? e.chapter_count : m), null);
   const cumulative = sessions.reduce((a, s) => a + s.book_seconds, 0);
   const wall = sessions.reduce((a, s) => a + s.wall_seconds, 0);
@@ -300,5 +300,9 @@ export async function recomputeRead(readId: string, settings: Settings): Promise
     update.finished_at = last.occurred_at;
     update.finish_source = progress.basis === 'app' ? 'app' : 'auto';
   }
-  await db().from('reads').update(update).eq('id', readId);
+  // A rejected write here used to pass unnoticed and leave stale progress on
+  // the read, which is how a fractional book_position_ms against a bigint
+  // column hid for a whole recompute cycle.
+  const { error } = await db().from('reads').update(update).eq('id', readId);
+  if (error) console.error('recomputeRead: could not update read', readId, error.message);
 }
