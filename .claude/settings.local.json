@@ -12,5 +12,9 @@
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enabledMcpjsonServers": [
+    "supabase",
+    "vercel"
+  ]
 }
