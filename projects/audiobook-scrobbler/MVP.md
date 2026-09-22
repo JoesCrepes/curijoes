@@ -342,13 +342,25 @@ Considered, deliberately not in the MVP:
 
 ## Needs verifying
 
-- **`UserBookUpdateInput` accepting `rating` and `review`.** Assumed by phase
-  4, never probed. One line added to
-  [/api/hardcover/probe](projects/audiobook-scrobbler/web/app/api/hardcover/probe/route.ts)
-  settles it.
-- **Status id 1 for want-to-read.** `STATUS.WANT_TO_READ` is declared in
-  [lib/hardcover.ts](projects/audiobook-scrobbler/web/lib/hardcover.ts) but
-  the 2026-09-18 probe only confirmed 2, 3 and 5.
+- ~~**`UserBookUpdateInput` accepting `rating` and `review`.**~~ **Settled
+  2026-09-22, and half of it was wrong.** `rating` exists and is `numeric`, so
+  the 0.5–5 half-step scale needs no conversion. **There is no `review`
+  field.** The review is `review_markdown` (String), alongside `review_slate`
+  (jsonb), `review_has_spoilers` (Boolean) and `reviewed_at` (date). Phase 4
+  would have failed on the field name. `UserBookCreateInput` takes the same
+  set, so a rating can be sent on the first write rather than needing a
+  follow-up update.
+- ~~**Status id 1 for want-to-read.**~~ **Settled 2026-09-22: yes.** All six
+  ids confirmed against the live API — 1 Want to Read, 2 Currently Reading,
+  3 Read, 4 Paused, 5 Did Not Finish, 6 Ignored. `STATUS` in
+  [lib/hardcover.ts](projects/audiobook-scrobbler/web/lib/hardcover.ts) is
+  correct as declared.
+  The reason this went unconfirmed is worth keeping: the probe route asked
+  `statuses`, which Hardcover refuses for API tokens outright
+  (`Not available to API tokens: statuses`), and the route recorded that
+  refusal as an error rather than a wrong question. The readable table is
+  `user_book_statuses`, which `scripts/hardcover-probe.mjs` was already using.
+  The route now agrees with the script.
 - **Goodreads export still being available**, and its column set. It has been
   removed and restored before now.
 - **Back catalogue size: a couple of hundred books.** Settled, and it is what
