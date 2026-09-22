@@ -103,3 +103,34 @@ a list of switches in the app.
   `audiobook-scrobbler.vercel.app`, RLS on every table with no policies.
 - **Fat Android client** (was a nice-to-have): four Compose screens in the web
   app's palette; prompts open in the app rather than the PWA.
+
+## Done since (2026-09-22, after four days of real listening)
+
+- **Progress fixed twice over, both faults found in the live data.** An idle
+  re-attach — opening Audible without playing — republishes the session at
+  position 0 with no chapter index, and taking that as the listener's location
+  reset Yesteryear to 0%. A day later the same gesture restored the real
+  position but still without an index, and since a position with no index was
+  read as absolute over a book-wide duration, 45 s into chapter 3 scored 3% of
+  a fourteen-hour book. A position now counts only when it is not a zeroed
+  re-attach and, on a book with a queue, only when it carries the chapter
+  index that gives it meaning.
+- **`chapters_estimated` basis** (migration 0006). The chapter map is learned
+  from chapters actually played, so a book started before the app existed has
+  holes below the current chapter and fell back to cumulative — which can only
+  ever measure what we watched. Guards! Guards! read 23% while genuinely at
+  track 95 of 121. Filling the unseen chapters with the runtime the known ones
+  do not account for gives 79.0% against the 78.5% the track index implies, and
+  converges as the map fills. Being an estimate, it cannot auto-finish a book
+  on its own; it needs the last chapter, like cumulative.
+- `recomputeRead` now reports a failed write. A fractional `book_position_ms`
+  against a bigint column was rejected silently and left stale progress behind,
+  which read exactly like a logic bug.
+
+## Open before Hardcover writes
+
+`HARDCOVER_DRY_RUN` has never exercised the half that matters: `runOp` returns
+a null id under dry run, so `syncRead` never reaches `insert_user_book_read`
+and every log line is `insert_user_book`. The progress mutations have not run
+even in simulation. Make the dry run carry a placeholder id so the read
+mutations are built and logged, confirm the three payloads, then flip the flag.
