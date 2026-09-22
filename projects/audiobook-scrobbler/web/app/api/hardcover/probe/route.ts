@@ -26,9 +26,29 @@ export async function GET(req: Request) {
     report.mutations_error = String(e);
   }
   try {
-    report.statuses = await gql(`query { statuses { id name } }`);
+    // `statuses` is refused outright for API tokens ("Not available to API
+    // tokens"), so this asked a question it could never get an answer to and
+    // quietly recorded the refusal as an error. The user-facing table is
+    // user_book_statuses.
+    const d = await gql<{ user_book_statuses: { id: number; status: string }[] }>(`query { user_book_statuses { id status } }`);
+    report.statuses = Object.fromEntries((d.user_book_statuses ?? []).map((s) => [s.id, s.status]));
   } catch (e) {
     report.statuses_error = String(e);
+  }
+
+  try {
+    // Phase 4 mirrors ratings and reviews. `rating` exists; `review` does not
+    // — the column is review_markdown — so name the fields we actually intend
+    // to send rather than assuming.
+    const d = await gql<{ __type: { inputFields: { name: string }[] } | null }>(
+      `query { __type(name: "UserBookUpdateInput") { inputFields { name } } }`,
+    );
+    const fields = new Set((d.__type?.inputFields ?? []).map((f) => f.name));
+    report.user_book_update_fields = Object.fromEntries(
+      ['rating', 'review_markdown', 'review_has_spoilers', 'reviewed_at', 'status_id', 'edition_id'].map((n) => [n, fields.has(n)]),
+    );
+  } catch (e) {
+    report.user_book_update_error = String(e);
   }
   try {
     report.search_sample = await gql(`query { search(query: "project hail mary", query_type: "Book", per_page: 1, page: 1) { results } }`);

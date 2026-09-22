@@ -45,3 +45,44 @@ jobs:
           name: audio-scrobbler-debug-apk
           path: projects/audiobook-scrobbler/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  # Same loop as `python tools/e2e.py` locally: instrumented tests plus the
+  # fake-player scenarios on an API 36 emulator.
+  android-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: projects/audiobook-scrobbler/android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: ./gradlew :app:assembleDebug :fakeplayer:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full
+          disable-animations: true
+          working-directory: projects/audiobook-scrobbler/android
+          script: python tools/e2e.py --no-build --connected
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-test-reports
+          path: projects/audiobook-scrobbler/android/app/build/reports/androidTests/
+          if-no-files-found: ignore

@@ -23,7 +23,13 @@ export async function GET(req: Request) {
   }
 
   const [reads, actions, recentSessions, recentEvents, books] = await Promise.all([
-    d.from('reads').select('*, books(id, title, author, cover_url, match_status, runtime_seconds, source_app)').eq('user_id', auth.userId).order('last_activity_at', { ascending: false }).limit(50),
+    // Sessions and the match fields ride along so the phone app can draw a
+    // book's whole detail screen without a second round trip.
+    d.from('reads')
+      .select('*, sessions(*), books(id, title, author, cover_url, match_status, runtime_seconds, source_app, external_id, external_id_kind, hardcover_book_id, hardcover_edition_id, isbn13)')
+      .eq('user_id', auth.userId)
+      .order('last_activity_at', { ascending: false })
+      .limit(50),
     d.from('actions').select('*').eq('user_id', auth.userId).eq('status', 'pending').order('created_at'),
     d.from('sessions').select('*, reads(book_id, books(title))').order('started_at', { ascending: false }).limit(30),
     d.from('events').select('id, app_package, event_type, occurred_at, is_playing, position_ms, duration_ms, playback_speed, chapter_idx, chapter_title, book_id, raw').eq('user_id', auth.userId).order('occurred_at', { ascending: false }).limit(50),

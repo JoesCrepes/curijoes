@@ -38,26 +38,41 @@ cp .env.local.example .env.local   # fill in
 npm run dev
 ```
 
-1. Create a Supabase project and run `web/supabase/migrations/0001_init.sql`
-   in the SQL editor.
-2. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`
-   (`openssl rand -hex 32`), `CRON_SECRET`, and optionally `HARDCOVER_TOKEN`.
-3. Deploy to Vercel with the project root set to
-   `projects/audiobook-scrobbler/web`. `vercel.json` schedules the hourly
-   stall/timeout/resync cron.
-4. Open the site, sign in with `API_TOKEN`, then Settings → *Probe Hardcover*.
-   Once the probe reports the mutations exist, set `HARDCOVER_DRY_RUN=false`.
+1. Create a Supabase project and run every file in
+   `web/supabase/migrations/` in order. `0003` turns on row level security
+   with no policies, which is what stops the public anon key reading your
+   listening log; the server's secret key bypasses it.
+2. Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (the `sb_secret_…` key, which
+   replaced the legacy `service_role` key), `API_TOKEN` (`openssl rand -hex
+   32`), `CRON_SECRET`, and optionally `HARDCOVER_TOKEN`.
+3. `npm run check` verifies the lot: database reads and writes, that RLS
+   really does block the publishable key, and that the Hardcover token works.
+   It prints no secrets.
+4. `bash scripts/deploy.sh <vercel-project>` links the project, pushes those
+   variables to production and preview, and deploys. Set the project's root
+   directory to `projects/audiobook-scrobbler/web`.
+5. Settings → *Probe Hardcover*, or `node scripts/hardcover-probe.mjs`. Once
+   the probe reports the mutations exist, set `HARDCOVER_DRY_RUN=false`.
 
-Tests: `npm test` (pure logic: normalization, sessions, progress, finish rules).
+Tests: `npm test` (pure logic: normalization, sessions, progress, finish,
+matching, plus fixtures captured from the real players).
+
+### The cron
+
+`vercel.json` schedules `/api/cron/evaluate` daily, because Hobby accounts
+refuse anything more frequent. The phone does not wait for it: `ActionsWorker`
+calls the same endpoint with the ordinary API token before each 15-minute
+poll, so stall prompts appear within the quarter hour. The daily server run is
+only a backstop for stretches when the phone is off.
 
 ## Phone setup
 
 1. Download the debug APK from the *audiobook-scrobbler* GitHub Actions run
    (or build with Android Studio from `android/`) and sideload it.
-2. Open the app, enter the server URL and `API_TOKEN`, tap *Grant notification
-   access* and allow it, and allow notifications.
-3. Play something. The app's status panel shows the sessions it can see and
-   the upload queue; the PWA's *Raw events* panel shows what arrived.
+2. Open the app, tap the gear, fill in the server address and `API_TOKEN`,
+   grant notification access and allow notifications.
+3. Play something. It appears under *Apps to watch* in Settings the moment the
+   phone reports a media session for it; switch it on to start recording.
 
 ## API
 
@@ -85,8 +100,82 @@ All routes take `Authorization: Bearer <API_TOKEN>` (the PWA uses a cookie set b
   event carries the whole `MediaMetadata` bag in `raw`.
 - Outbox is SQLite (`events.db`); `UploadWorker` drains it whenever there's
   network, `ActionsWorker` polls for prompts every 15 min and after uploads.
-- *Capture every media app* is a discovery mode: use it once to learn a
-  player's package name from the status panel, then put that name in the
-  allow-list here and in the server's `allowed_apps` setting.
+- *Apps to watch* in Settings lists every media app the phone has shown us,
+  each with a switch. Only the ones switched on are recorded. The server keeps
+  its own `allowed_apps` setting as a second filter.
+- The UI is Compose, in the web app's palette so the two look like one
+  product, and dark-only because the web app is. Icons are drawn rather than
+  pulled from an icon pack.
+- A prompt notification opens that prompt inside the app, not the PWA.
 - Build: `./gradlew assembleDebug` with the Android SDK installed, or take the
   APK artifact from the GitHub Actions run.
+
+## Automated Android test loop
+
+No Audible needed. `android/fakeplayer/` is a second app that publishes a
+real `MediaSession` and is driven entirely by adb intents: LOAD, PLAY,
+PAUSE, STOP, SEEK, CHAPTER, SPEED, RELEASE. It advances position in real
+time and rolls into the next chapter by itself. LOAD takes
+`--es layout audible|libby|librofm|generic`; the three real layouts reproduce
+what those apps actually publish, as recorded from a phone (see *Capturing
+real player data* below and `PLAN.md`), so the loop tests the scrobbler
+against the true key names, position semantics and queue shapes.
+
+```bash
+cd android
+python tools/e2e.py               # emulator up, build, install, scripted listen, assertions
+python tools/e2e.py --connected   # + instrumented unit tests (EventBuilder, EventStore)
+python tools/e2e.py --sample      # + wait for the 60 s periodic position sample
+python tools/e2e.py --window      # watch the emulator while it runs
+python tools/e2e.py --no-build    # reuse the APKs already built
+```
+
+What it does: boots (or reuses) the `scrobbler-api36` AVD, installs both
+APKs, grants notification access with `cmd notification allow_listener`,
+starts a mock `/api/ingest` on the host reached through `adb reverse`,
+configures the app through the debug-only `DebugConfigReceiver`, plays three
+scenarios in the fake player and asserts on the uploaded events (types,
+chapter indexes, positions, queue, token, dedupe). On failure it dumps the
+relevant logcat and `dumpsys media_session`.
+
+Needs: JDK 17 (`JAVA_HOME`), the Android SDK (`ANDROID_HOME` or the default
+location) with platform-tools, emulator, cmdline-tools and
+`system-images;android-36;google_apis;x86_64`, and Python 3. The same loop
+runs in CI on a GitHub Actions emulator (`android-emulator` job).
+
+Debug builds also allow cleartext HTTP and expose the config receiver; release
+builds have neither.
+
+### Capturing real player data (phone over USB)
+
+The fake player is a stand-in; the shape of a real Audible/Libby/Libro.fm
+session comes from the phone. Enable *USB debugging*, plug the phone in,
+accept the prompt, then:
+
+```bash
+cd android
+python tools/capture.py            # build, install, grant, record until Ctrl+C
+python tools/capture.py --no-build --duration 600
+```
+
+It points the app at a mock server on the PC (through `adb reverse`, so no
+deployed server is needed), turns on *capture every app*, and writes every
+uploaded event to `tools/captures/<timestamp>.jsonl` plus a
+`.summary.json` with each app's raw metadata keys and sample values. The
+first event from each app prints its full raw key set. Play, pause, seek,
+skip chapters and switch books while it runs. On exit the app's server URL
+is cleared (or set with `--restore-url`) and the allow-list is set to the
+packages seen. Keep the phone on Wi-Fi: the uploader waits for a network.
+
+To see what a capture turns into without a server, replay it through the
+real pipeline offline and get a page in Hardcover's shape (`user_books`,
+`user_book_reads`, the mutations the sync would run, plus sessions and the
+chapter map):
+
+```bash
+cd web
+npm run replay -- ../android/tools/captures/20260918-154914.jsonl   # writes <capture>.hardcover.html
+```
+
+`python ../android/tools/report.py <capture.jsonl>` renders the raw side
+instead: every event, every metadata key and the queue, per app.

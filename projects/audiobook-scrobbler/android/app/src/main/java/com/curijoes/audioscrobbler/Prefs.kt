@@ -24,12 +24,16 @@ class Prefs(context: Context) {
         get() = sp.getString("device_id", null) ?: UUID.randomUUID().toString().also { sp.edit().putString("device_id", it).apply() }
 
     var allowedApps: Set<String>
-        get() = sp.getString("allowed_apps", DEFAULT_APPS)!!.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-        set(v) = sp.edit().putString("allowed_apps", v.joinToString(",")).apply()
+        get() = sp.getString(KEY_ALLOWED_APPS, DEFAULT_APPS)!!.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        set(v) = sp.edit().putString(KEY_ALLOWED_APPS, v.joinToString(",")).apply()
 
     var captureAll: Boolean
-        get() = sp.getBoolean("capture_all", false)
-        set(v) = sp.edit().putBoolean("capture_all", v).apply()
+        get() = sp.getBoolean(KEY_CAPTURE_ALL, false)
+        set(v) = sp.edit().putBoolean(KEY_CAPTURE_ALL, v).apply()
+
+    /** SharedPreferences keeps listeners weakly; callers must hold a strong reference. */
+    fun registerOnChange(l: SharedPreferences.OnSharedPreferenceChangeListener) = sp.registerOnSharedPreferenceChangeListener(l)
+    fun unregisterOnChange(l: SharedPreferences.OnSharedPreferenceChangeListener) = sp.unregisterOnSharedPreferenceChangeListener(l)
 
     var lastUploadStatus: String
         get() = sp.getString("last_upload", "never")!!
@@ -44,6 +48,8 @@ class Prefs(context: Context) {
     fun shouldCapture(pkg: String): Boolean = captureAll || pkg in allowedApps
 
     companion object {
+        const val KEY_ALLOWED_APPS = "allowed_apps"
+        const val KEY_CAPTURE_ALL = "capture_all"
         // Audible and Libby are well known; Libro.fm's package is a guess to be
         // corrected from the status panel (it lists every active session's package).
         const val DEFAULT_APPS = "com.audible.application,fm.libro.librofm,com.overdrive.mobile.android.libby"

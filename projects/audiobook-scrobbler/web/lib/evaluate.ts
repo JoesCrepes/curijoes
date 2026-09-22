@@ -3,7 +3,7 @@ import { isStalled } from './finish';
 import { loadSettings } from './ingest';
 import { syncRead } from './sync';
 
-/** Hourly cron: stall prompts, prompt timeouts, and Hardcover retry. */
+/** Daily cron: stall prompts, prompt timeouts, and Hardcover retry. */
 export async function evaluate(userId: string, now = new Date()): Promise<{ stall_prompts: number; timed_out: number; resynced: number }> {
   const s = await loadSettings(userId);
   const out = { stall_prompts: 0, timed_out: 0, resynced: 0 };

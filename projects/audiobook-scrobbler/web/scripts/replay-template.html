@@ -1,0 +1,141 @@
+<title>Hardcover Preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #f6f5f2; --surface: #fdfdfb; --line: #e3e1da; --line-strong: #cfcdc4;
+  --ink: #1b1a17; --ink-2: #5a584f; --ink-3: #8f8d84;
+  --accent: #7a4a1e; --accent-soft: #f1e6d8;
+  --reading: #2a78d6; --reading-soft: #e3eefb; --read: #1f8a5a; --read-soft: #dff3e8; --dnf: #8a5a1f; --dnf-soft: #f3e8d6;
+  --bar-bg: #e8e6df;
+  --serif: "Source Serif 4", Georgia, serif; --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; --mono: "IBM Plex Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #171613; --surface: #1f1e1a; --line: #33312b; --line-strong: #4a4740;
+  --ink: #f1efe9; --ink-2: #bcb9ae; --ink-3: #8a877c;
+  --accent: #d9a56b; --accent-soft: #33281c;
+  --reading: #5f9ce6; --reading-soft: #1c2c40; --read: #4fbf8a; --read-soft: #173327; --dnf: #d0a15f; --dnf-soft: #362a18;
+  --bar-bg: #2c2a24;
+} }
+:root[data-theme="dark"] {
+  --bg: #171613; --surface: #1f1e1a; --line: #33312b; --line-strong: #4a4740;
+  --ink: #f1efe9; --ink-2: #bcb9ae; --ink-3: #8a877c;
+  --accent: #d9a56b; --accent-soft: #33281c;
+  --reading: #5f9ce6; --reading-soft: #1c2c40; --read: #4fbf8a; --read-soft: #173327; --dnf: #d0a15f; --dnf-soft: #362a18;
+  --bar-bg: #2c2a24;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+.wrap { max-width: 960px; margin: 0 auto; padding-block: 28px 56px; padding-inline: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; margin-bottom: 6px; }
+h1 { font: 600 26px/1.2 var(--serif); margin: 0; text-wrap: balance; }
+.sub { color: var(--ink-2); margin: 0 0 22px; max-width: 65ch; }
+.eyebrow { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
+.shelf { display: grid; gap: 22px; }
+.book { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.book-head { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+.book-head h2 { font: 600 20px/1.25 var(--serif); margin: 0; text-wrap: balance; }
+.book-head .by { color: var(--ink-2); margin-top: 2px; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 500; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.pill.reading { background: var(--reading-soft); color: var(--reading); }
+.pill.finished { background: var(--read-soft); color: var(--read); }
+.pill.dnf { background: var(--dnf-soft); color: var(--dnf); }
+.pill.app { background: transparent; border: 1px solid var(--line-strong); color: var(--ink-2); }
+.progress { padding: 14px 18px; display: grid; gap: 8px; }
+.bar { height: 10px; border-radius: 5px; background: var(--bar-bg); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--reading); border-radius: 5px; }
+.book.finished .bar > i { background: var(--read); }
+.prog-row { display: flex; flex-wrap: wrap; gap: 4px 18px; justify-content: space-between; font-variant-numeric: tabular-nums; }
+.prog-row b { font-weight: 600; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 16px; padding: 0 18px 14px; }
+.fact .eyebrow { margin-bottom: 1px; }
+.fact div:last-child { font-variant-numeric: tabular-nums; }
+.section { border-top: 1px solid var(--line); padding: 12px 18px 14px; }
+.section > h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--ink-3); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+pre { margin: 0; font: 12px/1.5 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.two .eyebrow { margin-bottom: 4px; }
+details summary { cursor: pointer; font-weight: 500; }
+details[open] summary { margin-bottom: 8px; }
+.muted { color: var(--ink-3); }
+.note { font-size: 12.5px; color: var(--ink-2); margin: 0 0 8px; max-width: 70ch; }
+.footer { margin-top: 26px; color: var(--ink-3); font-size: 12.5px; }
+.footer code { font-family: var(--mono); }
+</style>
+<div class="wrap">
+  <header><h1>Hardcover preview</h1><span class="eyebrow" id="stamp"></span></header>
+  <p class="sub" id="sub"></p>
+  <div class="shelf" id="shelf"></div>
+  <p class="footer" id="footer"></p>
+</div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const APP = { 'com.audible.application': 'Audible', 'com.overdrive.mobile.android.libby': 'Libby', 'fm.libro.librofm': 'Libro.fm', 'com.spotify.music': 'Spotify', 'com.curijoes.fakeplayer': 'Fake player' };
+const app = (p) => APP[p] ?? p;
+const hms = (s) => { if (s == null) return '—'; s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}h ${m}m` : m ? `${m}m ${x}s` : `${x}s`; };
+const when = (iso) => iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const t = (iso) => new Date(iso).toLocaleTimeString([], { hour12: false });
+const STATUS = { reading: 'Currently reading', finished: 'Read', dnf: 'Did not finish' };
+const BASIS = { chapters: 'chapter map', position: 'player position over book length', cumulative: 'listened time over runtime', app: 'player reported complete', none: 'unknown: no runtime yet' };
+
+document.getElementById('stamp').textContent = `from ${D.source} · replayed ${when(D.generated_at)}`;
+const ign = Object.entries(D.counts.ignored).map(([k, n]) => `${app(k)} (${n})`).join(', ');
+document.getElementById('sub').textContent = `${D.counts.events} captured events became ${D.counts.reads} read${D.counts.reads === 1 ? '' : 's'}, run through the same field maps, session and progress rules the server uses, then shaped the way the Hardcover sync sends them.` + (ign ? ` Not audiobook apps, ignored: ${ign}.` : '');
+
+const shelf = document.getElementById('shelf');
+for (const r of D.reads) {
+  const pct = r.progress.pct;
+  const el = document.createElement('article');
+  el.className = 'book ' + r.status;
+  const sessions = r.sessions.map((s) => `<tr><td class="mono">${t(s.started_at)}–${t(s.ended_at)}</td><td>${hms(s.wall_seconds)}</td><td>${hms(s.book_seconds)}</td><td class="mono">${s.start_chapter_idx ?? '—'} → ${s.end_chapter_idx ?? '—'}</td><td class="mono">${hms((s.start_position_ms ?? 0) / 1000)} → ${hms((s.end_position_ms ?? 0) / 1000)}</td><td class="muted">${s.event_count}</td></tr>`).join('');
+  const chapters = r.book.chapters.filter((c) => c.title || c.duration_ms != null);
+  const chapRows = chapters.slice(0, 12).map((c) => `<tr><td class="mono muted">${c.idx}</td><td>${esc(c.title ?? '')}</td><td class="mono">${c.duration_ms != null ? hms(c.duration_ms / 1000) : '<span class="muted">not heard yet</span>'}</td></tr>`).join('');
+  const fm = r.book.field_map;
+  el.innerHTML = `
+    <div class="book-head">
+      <div><h2>${esc(r.book.title)}</h2><div class="by">${esc(r.book.author ?? 'Unknown author')}</div></div>
+      <div class="pills"><span class="pill ${r.status}">${STATUS[r.status]}</span><span class="pill app">${esc(app(r.book.source_app))}</span>${r.book.external_id ? `<span class="pill app mono">${esc(r.book.external_id)}</span>` : ''}</div>
+    </div>
+    <div class="progress">
+      <div class="bar" role="progressbar" aria-valuenow="${pct != null ? Math.round(pct * 100) : 0}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct != null ? (pct * 100).toFixed(1) : 0}%"></i></div>
+      <div class="prog-row"><span><b>${pct != null ? (pct * 100).toFixed(1) + '%' : 'progress unknown'}</b> <span class="muted">· ${BASIS[r.progress.basis]}</span></span><span>${r.progress.book_position_ms != null ? `<b>${hms(r.progress.book_position_ms / 1000)}</b> in` : ''}${r.book.runtime_ms ? ` <span class="muted">of ${hms(r.book.runtime_ms / 1000)}</span>` : ' <span class="muted">· runtime comes from the matched edition</span>'}</span></div>
+    </div>
+    <div class="facts">
+      <div class="fact"><div class="eyebrow">Chapter</div><div>${r.chapter_idx != null ? `${r.chapter_idx + 1}${r.book.chapter_count ? ' of ' + r.book.chapter_count : ''}` : 'not reported'}${r.chapter_position_ms != null && r.chapter_idx != null ? ` <span class="muted">· ${hms(r.chapter_position_ms / 1000)} in</span>` : ''}</div></div>
+      <div class="fact"><div class="eyebrow">Listened</div><div>${hms(r.book_seconds_listened)} book <span class="muted">/ ${hms(r.wall_seconds_listened)} wall</span></div></div>
+      <div class="fact"><div class="eyebrow">Speed</div><div>${r.speeds.length ? r.speeds.map((s) => s.toFixed(2).replace(/\.?0+$/, '') + '×').join(', ') : '—'}</div></div>
+      <div class="fact"><div class="eyebrow">Started</div><div>${when(r.started_at)}</div></div>
+      <div class="fact"><div class="eyebrow">Last activity</div><div>${when(r.last_activity_at)}</div></div>
+      <div class="fact"><div class="eyebrow">Events</div><div>${r.event_count} <span class="muted">· ${Object.entries(r.event_types).map(([k, n]) => `${k} ${n}`).join(', ')}</span></div></div>
+    </div>
+    <div class="section"><h3>Sessions <span class="muted" style="font-weight:400">· gap rule ${D.settings.session_gap_seconds / 60} min</span></h3>
+      ${sessions ? `<div class="scroll"><table><thead><tr><th>when</th><th>wall</th><th>book time</th><th>chapters</th><th>position</th><th>events</th></tr></thead><tbody>${sessions}</tbody></table></div>` : '<p class="note">No session: nothing was playing long enough.</p>'}
+    </div>
+    <div class="section"><h3>What we'd send to Hardcover</h3>
+      <p class="note">Book and edition ids are filled in by the match step (Hardcover search, then the audiobook edition for runtime); everything else is already final. Dates are days, progress is seconds into the book.</p>
+      <div class="two">
+        <div><div class="eyebrow">user_books</div><pre>${esc(JSON.stringify(r.hardcover.user_book, null, 2))}</pre></div>
+        <div><div class="eyebrow">user_book_reads</div><pre>${esc(JSON.stringify(r.hardcover.user_book_read, null, 2))}</pre></div>
+      </div>
+      <details style="margin-top:10px"><summary>Mutations, as the sync would run them</summary>
+        ${r.hardcover.ops.map((op) => `<div class="eyebrow" style="margin-top:8px">${esc(op.op)}</div><pre>${esc(op.query.trim())}\n${esc(JSON.stringify(op.variables))}</pre>`).join('')}
+      </details>
+    </div>
+    <div class="section"><details><summary>How this app was read <span class="muted" style="font-weight:400">· ${chapters.length} chapter${chapters.length === 1 ? '' : 's'} known${r.book.chapter_count ? ' of ' + r.book.chapter_count : ''}</span></summary>
+      <div class="two">
+        <div><div class="eyebrow">Field map for ${esc(app(r.book.source_app))}</div><pre>title   ← ${esc(fm.title.map((k) => k.replace('android.media.metadata.', '')).join(' | '))}\nauthor  ← ${esc(fm.author.map((k) => k.replace('android.media.metadata.', '')).join(' | '))}\nchapter ← ${esc(fm.chapter.map((k) => k.replace('android.media.metadata.', '')).join(' | '))}\nidentity  ${esc(r.book.source_key)}</pre></div>
+        <div><div class="eyebrow">Chapter map${chapters.length > 12 ? ' (first 12)' : ''}</div>${chapRows ? `<div class="scroll"><table><thead><tr><th>#</th><th>title</th><th>length</th></tr></thead><tbody>${chapRows}</tbody></table></div>` : '<p class="note">No chapter information from this player.</p>'}</div>
+      </div></details>
+    </div>`;
+  shelf.appendChild(el);
+}
+document.getElementById('footer').innerHTML = `Regenerate with <code>npm run replay -- &lt;capture.jsonl&gt;</code> in <code>web/</code>. Settings: finish at ${Math.round(D.settings.finish_threshold * 100)}%, apps ${D.settings.allowed_apps.map(app).join(', ')}.`;
+</script>

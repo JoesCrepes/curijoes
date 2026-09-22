@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -29,8 +28,22 @@ class ActionsWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val prefs = Prefs(applicationContext)
         if (!prefs.configured) return Result.failure()
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val api = Api(prefs)
+
+        // Ask the server to re-evaluate before we read the queue. The endpoint
+        // takes our own bearer token, so this needs no extra secret, and it is
+        // idempotent. Doing it from here rather than on a schedule means
+        // prompts appear within the poll interval instead of once a day, which
+        // is all a Vercel Hobby account will schedule. The server-side daily
+        // run stays as a backstop for when this phone is off for a while.
+        try {
+            api.get("/api/cron/evaluate")
+        } catch (e: Exception) {
+            ServiceState.lastError = "evaluate: ${e.message}"
+        }
+
         return try {
-            val res = Api(prefs).get("/api/actions")
+            val res = api.get("/api/actions")
             val actions = res.optJSONArray("actions") ?: return Result.success()
             val pendingIds = HashSet<String>()
             for (i in 0 until actions.length()) {
@@ -55,9 +68,12 @@ class ActionsWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val id = a.getString("id")
         val payload = a.optJSONObject("payload") ?: JSONObject()
         val title = payload.optString("title", "a book")
+        // Open this prompt in the app, not the web page.
         val open = PendingIntent.getActivity(
             ctx, Notifications.idFor(id),
-            Intent(Intent.ACTION_VIEW, Uri.parse(Prefs(ctx).serverUrl + "/")),
+            Intent(ctx, MainActivity::class.java)
+                .putExtra(EXTRA_ACTION_ID, id)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val b = Notification.Builder(ctx, Notifications.CHANNEL_PROMPTS)

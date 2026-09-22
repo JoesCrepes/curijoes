@@ -92,6 +92,23 @@ object EventBuilder {
         return (state.position + (elapsed * speed).toLong()).coerceAtLeast(0L)
     }
 
+    /**
+     * True when the new snapshot's position is not where the previous one predicts
+     * (a seek), or the speed changed. Players re-publish identical state often.
+     */
+    fun isSeekOrSpeedChange(prev: PlaybackState?, cur: PlaybackState?, toleranceMs: Long = SEEK_TOLERANCE_MS): Boolean {
+        if (cur == null) return false
+        if (prev == null) return true
+        if (prev.playbackSpeed != cur.playbackSpeed && cur.state == PlaybackState.STATE_PLAYING) return true
+        val expected = if (prev.state == PlaybackState.STATE_PLAYING) {
+            val elapsed = cur.lastPositionUpdateTime - prev.lastPositionUpdateTime
+            prev.position + (elapsed * (prev.playbackSpeed.takeIf { it > 0f } ?: 1f)).toLong()
+        } else prev.position
+        return kotlin.math.abs(cur.position - expected) > toleranceMs
+    }
+
+    private const val SEEK_TOLERANCE_MS = 3_000L
+
     /** Cheap change detector for metadata so we only log real changes. */
     fun metadataSignature(md: MediaMetadata?): String {
         if (md == null) return ""
