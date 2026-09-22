@@ -51,13 +51,19 @@ export async function syncRead(readId: string): Promise<void> {
       await log(op, await hc.runOp(op));
     }
 
+    // A dry run's ids are stand-ins, so they must not be kept: persisting one
+    // would make the next real run update a user_book that does not exist.
+    // Keeping them null also means a dry run always exercises the insert path,
+    // which is the payload worth reading before letting this write for real.
+    const dry = hc.hardcoverDryRun();
     await db()
       .from('reads')
       .update({
-        hardcover_user_book_id: userBookId,
-        hardcover_read_id: hcReadId,
-        hardcover_dirty: hc.hardcoverDryRun(), // dry runs stay dirty so a real run picks them up
+        hardcover_user_book_id: dry ? null : userBookId,
+        hardcover_read_id: dry ? null : hcReadId,
+        hardcover_dirty: dry, // dry runs stay dirty so a real run picks them up
         hardcover_synced_at: new Date().toISOString(),
+        hardcover_last_mode: dry ? 'dry_run' : 'live',
         hardcover_error: null,
       })
       .eq('id', readId);

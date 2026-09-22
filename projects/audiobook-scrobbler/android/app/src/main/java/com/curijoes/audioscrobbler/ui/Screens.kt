@@ -33,6 +33,7 @@ import com.curijoes.audioscrobbler.Read
 import com.curijoes.audioscrobbler.appLabel
 import com.curijoes.audioscrobbler.fmtBasis
 import com.curijoes.audioscrobbler.fmtDuration
+import com.curijoes.audioscrobbler.fmtSync
 
 private fun timeOf(iso: String): String =
     Regex("T(\\d{2}:\\d{2})").find(iso)?.groupValues?.get(1) ?: iso.take(10)
@@ -342,8 +343,14 @@ fun BookScreen(r: Read, busy: Boolean, onBack: () -> Unit, onStatus: (String) ->
                         )
                         FactRow(
                             "Sync",
-                            r.hardcoverError ?: "no error",
-                            valueColor = if (r.hardcoverError != null) Ink.warn else Ink.muted,
+                            fmtSync(r.hardcoverLastMode, r.hardcoverSyncedAt, r.hardcoverError),
+                            valueColor = when {
+                                r.hardcoverError != null -> Ink.warn
+                                r.hardcoverLastMode == "live" -> Ink.ok
+                                // Not an error, but not a success either: say so
+                                // rather than let "no error" read as "synced".
+                                else -> Ink.accent
+                            },
                         )
                     }
                 }

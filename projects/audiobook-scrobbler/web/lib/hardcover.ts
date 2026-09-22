@@ -192,9 +192,17 @@ function compact<T extends Record<string, unknown>>(o: T): Partial<T> {
   return out;
 }
 
+/**
+ * Stand-in id handed back by a dry run so the caller keeps going and builds the
+ * mutations that depend on one. A dry run that returned null stopped at
+ * insert_user_book, which meant the read mutations — the half that carries
+ * progress — were never constructed, let alone inspected.
+ */
+export const DRY_RUN_ID = -1;
+
 /** Run an op, honoring dry-run. Returns the new/affected id when present. */
 export async function runOp(op: SyncOp): Promise<{ ok: boolean; id: number | null; response: unknown }> {
-  if (hardcoverDryRun()) return { ok: true, id: null, response: { dry_run: true } };
+  if (hardcoverDryRun()) return { ok: true, id: DRY_RUN_ID, response: { dry_run: true } };
   const data = await gql<Record<string, { id?: number }>>(op.query, op.variables);
   const first = Object.values(data)[0];
   return { ok: true, id: first?.id ?? null, response: data };

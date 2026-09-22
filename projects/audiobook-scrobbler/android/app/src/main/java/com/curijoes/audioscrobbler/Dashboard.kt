@@ -36,6 +36,9 @@ data class Read(
     val bookSecondsListened: Int,
     val lastActivityAt: String,
     val hardcoverError: String?,
+    /** "dry_run", "live", or null when no sync has ever been attempted. */
+    val hardcoverLastMode: String?,
+    val hardcoverSyncedAt: String?,
     val book: Book,
     val sessions: List<Session>,
 )
@@ -108,6 +111,8 @@ object DashboardParser {
         bookSecondsListened = o.optInt("book_seconds_listened"),
         lastActivityAt = o.optString("last_activity_at"),
         hardcoverError = o.stringOrNull("hardcover_error"),
+        hardcoverLastMode = o.stringOrNull("hardcover_last_mode"),
+        hardcoverSyncedAt = o.stringOrNull("hardcover_synced_at"),
         book = o.optJSONObject("books")?.let { book(it) }
             ?: Book(o.optString("book_id"), "Unknown", null, "", "unmatched", null, null, null, null),
         sessions = o.optJSONArray("sessions").map { s ->
@@ -174,6 +179,17 @@ fun fmtDuration(seconds: Int?): String {
         m > 0 -> "${m} m ${s} s"
         else -> "${s} s"
     }
+}
+
+/**
+ * What the Hardcover sync actually did. "no error" was true but read as
+ * "synced fine" when nothing had ever been sent.
+ */
+fun fmtSync(mode: String?, syncedAt: String?, error: String?): String = when {
+    error != null -> error
+    mode == "live" -> "sent" + (syncedAt?.let { " " + it.take(10) + " " + (Regex("T(\\d{2}:\\d{2})").find(it)?.groupValues?.get(1) ?: "") } ?: "")
+    mode == "dry_run" -> "dry run — nothing sent"
+    else -> "not sent yet"
 }
 
 fun fmtBasis(basis: String): String = when (basis) {
